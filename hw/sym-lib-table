@@ -1,4 +1,4 @@
 (sym_lib_table
-  (lib (name "Gekkio_Connector_Specialized")(type "Legacy")(uri "${KIPRJMOD}/libraries/Gekkio_Connector_Specialized.lib")(options "")(descr ""))
-  (lib (name "RP_RP2040")(type "Legacy")(uri "${KIPRJMOD}/libraries/RP_RP2040.lib")(options "")(descr ""))
+  (lib (name "Gekkio_Connector_Specialized")(type "KiCad")(uri "${KIPRJMOD}/libraries/Gekkio_Connector_Specialized.kicad_sym")(options "")(descr ""))
+  (lib (name "RP_RP2040")(type "KiCad")(uri "${KIPRJMOD}/libraries/RP_RP2040.kicad_sym")(options "")(descr ""))
 )
