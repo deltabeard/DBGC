@@ -20,4 +20,5 @@
   (lib (name "Gekkio_Potentiometer_SMD")(type "KiCad")(uri "${KIPRJMOD}/gekkio-kicad-libs/Gekkio_Potentiometer_SMD.pretty")(options "")(descr ""))
   (lib (name "Gekkio_RF_GPS")(type "KiCad")(uri "${KIPRJMOD}/gekkio-kicad-libs/Gekkio_RF_GPS.pretty")(options "")(descr ""))
   (lib (name "Gekkio_Transformer_THT")(type "KiCad")(uri "${KIPRJMOD}/gekkio-kicad-libs/Gekkio_Transformer_THT.pretty")(options "")(descr ""))
+  (lib (name "MCU_RaspberryPi_and_Boards")(type "KiCad")(uri "${KIPRJMOD}/RP_Silicon_KiCad/KiCadLibraries/MCU_RaspberryPi_and_Boards.pretty")(options "")(descr ""))
 )

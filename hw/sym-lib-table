@@ -39,5 +39,5 @@
   (lib (name "Gekkio_Transformer")(type "Legacy")(uri "${KIPRJMOD}/gekkio-kicad-libs/Gekkio_Transformer.lib")(options "")(descr ""))
   (lib (name "Gekkio_Transistor_BJT")(type "Legacy")(uri "${KIPRJMOD}/gekkio-kicad-libs/Gekkio_Transistor_BJT.lib")(options "")(descr ""))
   (lib (name "Gekkio_Transistor_FET")(type "Legacy")(uri "${KIPRJMOD}/gekkio-kicad-libs/Gekkio_Transistor_FET.lib")(options "")(descr ""))
-  (lib (name "MCU_RaspberryPi_and_Boards")(type "Legacy")(uri "${KIPRJMOD}/RP_Silicon_KiCad/KiCadLibraries/MCU_RaspberryPi_and_Boards.lib")(options "")(descr ""))
+  (lib (name "MCU_RaspberryPi_and_Boards")(type "KiCad")(uri "${KIPRJMOD}/RP_Silicon_KiCad/MCU_RaspberryPi_and_Boards.kicad_sym")(options "")(descr ""))
 )

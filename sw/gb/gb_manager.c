@@ -17,13 +17,12 @@ void main(void) {
     const uint8_t games_n = sizeof(games_str) / sizeof(*games_str);
     uint8_t selection = 0;
     uint8_t selection_prev = 1;
+    uint8_t key_prev = 0;
 
     /* First, init the font system */
     font_init();
     font = font_load(font_ibm);
 
-    /* Turn scrolling off (why not?) */
-    mode(get_mode() | M_NO_SCROLL);
     /* Print game list. */
     for (uint8_t i = 0; i < games_n; i++) {
         putchar(' ');
@@ -33,17 +32,24 @@ void main(void) {
     /* Print some text! */
     while (1) {
         uint8_t key;
+        uint8_t key_changes;
 
         wait_vbl_done();
         key = joypad();
-        if (key & J_UP && selection != 0)
+
+        /* Only change cursor on key down. */
+        key_changes = (key ^ key_prev) & key;
+
+        if (key_changes & J_UP && selection != 0)
             selection--;
-        else if (key & J_DOWN && selection < games_n - 1)
+        else if (key_changes & J_DOWN && selection < games_n - 1)
             selection++;
-        else if (key & J_LEFT)
+        else if (key_changes & J_LEFT)
             selection = 0;
-        else if (key & J_RIGHT)
+        else if (key_changes & J_RIGHT)
             selection = games_n - 1;
+
+        key_prev = key;
 
         if(selection_prev == selection)
             continue;
