@@ -1,4 +1,5 @@
 (fp_lib_table
   (lib (name "Gekkio_Connector_PCBEdge")(type "KiCad")(uri "${KIPRJMOD}/footprints/Gekkio_Connector_PCBEdge.pretty")(options "")(descr ""))
   (lib (name "RP_RP2040")(type "KiCad")(uri "${KIPRJMOD}/footprints/RP_RP2040.pretty")(options "")(descr ""))
+  (lib (name "Project_Specific")(type "KiCad")(uri "${KIPRJMOD}/footprints/Project_Specific.pretty")(options "")(descr ""))
 )

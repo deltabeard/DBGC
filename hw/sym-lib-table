@@ -2,4 +2,5 @@
   (lib (name "Gekkio_Connector_Specialized")(type "KiCad")(uri "${KIPRJMOD}/libraries/Gekkio_Connector_Specialized.kicad_sym")(options "")(descr ""))
   (lib (name "RP_RP2040")(type "KiCad")(uri "${KIPRJMOD}/libraries/RP_RP2040.kicad_sym")(options "")(descr ""))
   (lib (name "Project_specific")(type "KiCad")(uri "${KIPRJMOD}/libraries/Project_specific.kicad_sym")(options "")(descr ""))
+  (lib (name "Gekkio_Logic_LevelTranslator")(type "Legacy")(uri "${KIPRJMOD}/libraries/Gekkio_Logic_LevelTranslator.lib")(options "")(descr ""))
 )
