@@ -33,9 +33,9 @@
         "other_text_thickness": 0.15,
         "other_text_upright": false,
         "pads": {
-          "drill": 0.0,
-          "height": 2.0,
-          "width": 2.0
+          "drill": 7.2,
+          "height": 7.2,
+          "width": 7.2
         },
         "silk_line_width": 0.15,
         "silk_text_italic": false,
@@ -60,7 +60,9 @@
           "width": 0.2
         }
       ],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        "courtyards_overlap|73730001|70760001|3052f19f-fe4f-4986-8525-8af44c39d2a7|bdbd29a5-1025-4fef-bb6d-5473114f55fd"
+      ],
       "meta": {
         "filename": "board_design_settings.json",
         "version": 2
@@ -90,8 +92,8 @@
         "padstack": "error",
         "pth_inside_courtyard": "ignore",
         "shorting_items": "error",
-        "silk_over_copper": "warning",
-        "silk_overlap": "warning",
+        "silk_over_copper": "ignore",
+        "silk_overlap": "ignore",
         "skew_out_of_range": "error",
         "too_many_vias": "error",
         "track_dangling": "warning",
@@ -125,7 +127,8 @@
         0.13,
         0.2,
         0.4,
-        0.6
+        0.6,
+        1.0
       ],
       "via_dimensions": [
         {
@@ -384,7 +387,7 @@
       },
       {
         "bus_width": 12.0,
-        "clearance": 0.25,
+        "clearance": 0.127,
         "diff_pair_gap": 0.2,
         "diff_pair_via_gap": 0.25,
         "diff_pair_width": 0.127,
@@ -444,7 +447,7 @@
         ],
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "schematic_color": "rgba(0, 0, 0, 0.000)",
-        "track_width": 0.2,
+        "track_width": 0.18,
         "via_diameter": 0.7,
         "via_drill": 0.4,
         "wire_width": 6.0
