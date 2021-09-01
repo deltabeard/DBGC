@@ -60,9 +60,7 @@
           "width": 0.2
         }
       ],
-      "drc_exclusions": [
-        "courtyards_overlap|73730001|70760001|3052f19f-fe4f-4986-8525-8af44c39d2a7|bdbd29a5-1025-4fef-bb6d-5473114f55fd"
-      ],
+      "drc_exclusions": [],
       "meta": {
         "filename": "board_design_settings.json",
         "version": 2
@@ -370,7 +368,7 @@
     "classes": [
       {
         "bus_width": 12.0,
-        "clearance": 0.127,
+        "clearance": 0.13,
         "diff_pair_gap": 0.2,
         "diff_pair_via_gap": 0.25,
         "diff_pair_width": 0.127,
@@ -380,14 +378,14 @@
         "name": "Default",
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "schematic_color": "rgba(0, 0, 0, 0.000)",
-        "track_width": 0.127,
+        "track_width": 0.13,
         "via_diameter": 0.7,
         "via_drill": 0.4,
         "wire_width": 6.0
       },
       {
         "bus_width": 12.0,
-        "clearance": 0.127,
+        "clearance": 0.2,
         "diff_pair_gap": 0.2,
         "diff_pair_via_gap": 0.25,
         "diff_pair_width": 0.127,
@@ -396,30 +394,6 @@
         "microvia_drill": 0.1,
         "name": "ADDR",
         "nets": [
-          "/3V3_A0",
-          "/3V3_A1",
-          "/3V3_A10",
-          "/3V3_A11",
-          "/3V3_A12",
-          "/3V3_A13",
-          "/3V3_A14",
-          "/3V3_A15",
-          "/3V3_A2",
-          "/3V3_A3",
-          "/3V3_A4",
-          "/3V3_A5",
-          "/3V3_A6",
-          "/3V3_A7",
-          "/3V3_A8",
-          "/3V3_A9",
-          "/3V3_D0",
-          "/3V3_D1",
-          "/3V3_D2",
-          "/3V3_D3",
-          "/3V3_D4",
-          "/3V3_D5",
-          "/3V3_D6",
-          "/3V3_D7",
           "/A0",
           "/A1",
           "/A10",
@@ -443,11 +417,42 @@
           "/D4",
           "/D5",
           "/D6",
-          "/D7"
+          "/D7",
+          "/Peripherals/RESET_GB",
+          "PHI",
+          "~{CS}",
+          "~{RD}",
+          "~{RES}",
+          "~{WR}"
         ],
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.18,
+        "via_diameter": 0.7,
+        "via_drill": 0.4,
+        "wire_width": 6.0
+      },
+      {
+        "bus_width": 12.0,
+        "clearance": 0.13,
+        "diff_pair_gap": 0.2,
+        "diff_pair_via_gap": 0.25,
+        "diff_pair_width": 0.127,
+        "line_style": 0,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "name": "PWR",
+        "nets": [
+          "+1V1",
+          "+3V3",
+          "+5V",
+          "/Peripherals/VBAT",
+          "GB_5V",
+          "VBUS"
+        ],
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "track_width": 0.2,
         "via_diameter": 0.7,
         "via_drill": 0.4,
         "wire_width": 6.0
@@ -514,6 +519,22 @@
     [
       "2a8e3cc5-df06-4c87-b798-9d1c0b11c15d",
       ""
+    ],
+    [
+      "4a72f5c2-a106-4716-a4cb-f732c06faca4",
+      "USB"
+    ],
+    [
+      "d16c7687-bde3-41ca-9e25-5c88f02ac569",
+      "RP2040"
+    ],
+    [
+      "0895623b-cb6f-4914-a55a-ecd79a65b468",
+      "Power Supply"
+    ],
+    [
+      "eee07d0f-9449-488d-9f11-5c82ed827320",
+      "Peripherals"
     ]
   ],
   "text_variables": {}

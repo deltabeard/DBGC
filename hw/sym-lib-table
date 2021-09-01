@@ -3,6 +3,4 @@
   (lib (name "RP_RP2040")(type "KiCad")(uri "${KIPRJMOD}/libraries/RP_RP2040.kicad_sym")(options "")(descr ""))
   (lib (name "Project_specific")(type "KiCad")(uri "${KIPRJMOD}/libraries/Project_specific.kicad_sym")(options "")(descr ""))
   (lib (name "Gekkio_Logic_LevelTranslator")(type "KiCad")(uri "${KIPRJMOD}/libraries/Gekkio_Logic_LevelTranslator.kicad_sym")(options "")(descr ""))
-  (lib (name "USB4105-GF-A")(type "KiCad")(uri "${KIPRJMOD}/libraries/USB4105-GF-A.kicad_sym")(options "")(descr ""))
-  (lib (name "SamacSys_Parts")(type "KiCad")(uri "${KIPRJMOD}/libraries/SamacSys_Parts.kicad_sym")(options "")(descr ""))
 )
