@@ -1,16 +1,13 @@
 cmake_minimum_required(VERSION 3.13)
 
-# initialize the SDK based on PICO_SDK_PATH
-include(pico_sdk_import.cmake)
-
-project(gb_rp2040_cart)
+project(rp2040_manager C)
 
 # initialize the Raspberry Pi Pico SDK
 pico_sdk_init()
 
-add_executable(gb_rp2040_cart src/main.c)
+add_executable(rp2040_manager src/main.c)
 
-target_link_libraries(gb_rp2040_cart pico_stdlib)
+target_link_libraries(rp2040_manager pico_stdlib)
 
 # create map/bin/hex/uf2 file in addition to ELF.
-pico_add_extra_outputs(gb_rp2040_cart)
+pico_add_extra_outputs(rp2040_manager)
