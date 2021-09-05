@@ -17,11 +17,18 @@
 ;	Wait for LOW EDGE of A15
 	wait 1 IRQ A15_IRQ
 
-;	Read address into ISR
-	in PINS, 16
+;	Read address and data into ISR
+	in PINS, 24
 ;	Push address from ISR to RX FIFO
+;	This is not required if autopush is enabled
 	push noblock
+
+;	The CPU is expected to read the address from the RX FIFO, and fill the TX
+;	FIFO with the data requested.
+
 ;	Pull data from TX FIFO to OSR
+;	This is not required if autopull is enabled
 	pull ifempty block
 ;	Output data from OSR to data pins
 	out PINS,8
+.wrap
