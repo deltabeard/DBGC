@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.13)
 
-project(rp2040_manager C)
+project(rp2040_manager
+        VERSION 0.1.0.0
+        DESCRIPTION "Cart tool for use on the RP2040"
+        HOMEPAGE_URL "https://github.com/deltabeard/gb_rp2040_cart"
+        LANGUAGES C CXX)
 
 # initialize the Raspberry Pi Pico SDK
 pico_sdk_init()
