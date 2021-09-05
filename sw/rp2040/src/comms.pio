@@ -4,35 +4,24 @@
 
 .program gb_bus
 
-.define PHI 22
-.define A15	15
-.define CS_	15
+.define D0	0
+.define A0	8
+.define A15	23
+.define PHI 26
+.define CS_	29
 
-.define PHI_IRQ 0
+; A GPIO interrupt on the LOW EDGE of A15
+.define A15_IRQ 0
 
 .wrap_target
-on_phi_clock:
-;;	Wait for new HIGH EDGE of PHI clock
-;	This only checks if PHI is HIGH
-	WAIT 1 pin PHI
-;	This waits for an interrupt. A GPIO interrupt for the HIGH EDGE of PHI must
-;	have already been initialised by the CPU.
-;	This interrupt must not be presented to the interrupt controller.
-;	WAIT 1 IRQ PHI_IRQ
+;	Wait for LOW EDGE of A15
+	wait 1 IRQ A15_IRQ
 
-wait_for_address:
-;;	JMP PIN A15 on_rom_read
-; 	Read A15 pin
-; 	JMP if read value is low
-	MOV X PINS,A15
-	JMP !X on_rom_read
-
-;;	JMP PIN A15 on_ram_read
-; 	Read CS pin
-; 	JMP if read value is low
-	MOV X PINS,CS_
-	JMP !X on_rom_read
-	JMP wait_for_address
-
-on_rom_read:
-on_ram_read:
+;	Read address into ISR
+	in PINS, 16
+;	Push address from ISR to RX FIFO
+	push noblock
+;	Pull data from TX FIFO to OSR
+	pull ifempty block
+;	Output data from OSR to data pins
+	out PINS,8
