@@ -1,34 +1,44 @@
 ; Copyright (c) 2021 Mahyar Koshkouei
 ;
-; Read-only Game Boy bus communication
+; SM83/8080 bus communication for the Nintendo Game Boy.
+
+.define PHI 26
+
+; Two state machines are required. One state machine should have the JUMP PIN
+; set to A15, and the second to CS.
 
 .program gb_bus
 
-.define D0	0
-.define A0	8
-.define A15	23
-.define PHI 26
-.define CS_	29
-
-; A GPIO interrupt on the LOW EDGE of A15
-.define A15_IRQ 0
-
 .wrap_target
-;	Wait for LOW EDGE of A15
-	wait 1 IRQ A15_IRQ
+gb_bus:
+;	Wait for PHI to be HIGH.
+	wait 1 GPIO PHI
 
-;	Read address and data into ISR
-	in PINS, 24
+;	If A15 or CS pin is HIGH, then the address is not ready. This will loop
+;	until the address is ready. It is possible that neither A15 nor CS are
+;	pulled LOW in this clock cycle, in which case no read/write operation is
+;	performed and the WAIT PHI operation will block until a new clock cycle.
+	jmp PIN gb_bus
+
+;	Read address, data and misc pins into ISR.
+;	The CPU can tell whether the read/write operation is ROM or RAM depending
+;	on the state machine that this data is being pushed to, with respect to the
+;	setting of the JUMP PIN.
+;	The misc pins (PHI, WR, RD, CS) are included. The CPU will only need to
+;	check RD, which if HIGH, is a write operation.
+	in PINS, 30
+
 ;	Push address from ISR to RX FIFO
 ;	This is not required if autopush is enabled
 	push noblock
 
-;	The CPU is expected to read the address from the RX FIFO, and fill the TX
-;	FIFO with the data requested.
-
+;	Data is required for each clock cycle, but this will only be presented to
+;	the Game Boy is RD is HIGH.
 ;	Pull data from TX FIFO to OSR
 ;	This is not required if autopull is enabled
 	pull ifempty block
 ;	Output data from OSR to data pins
 	out PINS,8
+
+;	Wait for next instruction
 .wrap
