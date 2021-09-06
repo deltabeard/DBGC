@@ -9,7 +9,7 @@ project(rp2040_manager
 # initialize the Raspberry Pi Pico SDK
 pico_sdk_init()
 
-add_executable(rp2040_manager src/main.c)
+add_executable(rp2040_manager src/main.c src/comms.pio)
 
 target_link_libraries(rp2040_manager pico_stdlib)
 

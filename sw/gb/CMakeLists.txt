@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.13)
 
-project(gb_manager)
+project(gb_manager
         VERSION 0.1.0.0
         DESCRIPTION "Cart tool for use on the Game Boy"
         HOMEPAGE_URL "https://github.com/deltabeard/gb_rp2040_cart"
