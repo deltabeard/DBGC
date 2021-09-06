@@ -4,21 +4,36 @@
 
 .define PHI 26
 
-; Two state machines are required. One state machine should have the JUMP PIN
-; set to A15, and the second to CS.
+; Three state machines are required:
+; - One should have the JUMP PIN set to A15. (SM_A15, gb_bus_read)
+; - One should have the JUMP PIN set to CS. (SM_CS, gb_bus_read)
+; - One for data output to Game Boy. (SM_DO, gb_bus_write)
+;
+; Both SM_A15 and SM_CS fill the RX FIFO with addresses, data, PHI, WR, RD, and
+; CS, all within 30-bits.
+; If RD is LOW, then the CPU must push the 8-bit data at the requested address
+; to the TX FIFO of the SM_DO state machine. The data within the 30-bit RX FIFO
+; should not be used.
+; If RD is HIGH, then the CPU should not push any data to the TX FIFO, but
+; instead write the data received to the address given.
+;
+; The clock speed of PHI is expected to be a maximum of 2 MHz. The state of the
+; bus may change at a maximum rate of 16 MHz. In order to meet the speed
+; requirements of the Game Boy, the PIO should run at a clock speed of at least
+; 16 MHz.
+;
+; The direction of the data pins is handled within the gb_bus_write program.
 
-.program gb_bus
-
-.wrap_target
-gb_bus:
-;	Wait for PHI to be HIGH.
+.program gb_bus_read
+public gb_bus_read:
+;	Wait for a new clock cycle, and hence for a new read/write instruction.
 	wait 1 GPIO PHI
 
 ;	If A15 or CS pin is HIGH, then the address is not ready. This will loop
 ;	until the address is ready. It is possible that neither A15 nor CS are
 ;	pulled LOW in this clock cycle, in which case no read/write operation is
 ;	performed and the WAIT PHI operation will block until a new clock cycle.
-	jmp PIN gb_bus
+	jmp PIN gb_bus_read
 
 ;	Read address, data and misc pins into ISR.
 ;	The CPU can tell whether the read/write operation is ROM or RAM depending
@@ -32,13 +47,100 @@ gb_bus:
 ;	This is not required if autopush is enabled
 	push noblock
 
-;	Data is required for each clock cycle, but this will only be presented to
-;	the Game Boy is RD is HIGH.
+;	Wait for next instruction
+.wrap
+
+.program gb_bus_write
+public gb_bus_write:
 ;	Pull data from TX FIFO to OSR
 ;	This is not required if autopull is enabled
 	pull ifempty block
+
 ;	Output data from OSR to data pins
 	out PINS,8
 
-;	Wait for next instruction
+;	Set Data pins to OUTPUT.
+;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
+	mov osr, ~null	; Set OSR to all ones
+    out pindirs, 8	; Output ones to data pindirs
+
+;	Prepare to set Data pins to INPUT.
+	mov osr, null	; Set OSR to all zeros
+
+;	Keep data output active until new clock cycle.
+	wait 1 GPIO PHI
+
+;	Set Data pins to INPUT.
+;	This is done as soon as possible to ensure that Data pins are set to INPUT
+;	before the gb_bus program reads in all 30 pins.
+	out pindirs, 8	; Output zeros to data pindirs
+
+;	Wait for next data output
 .wrap
+
+
+% c-sdk {
+#include "hardware/clocks.h"
+void gb_bus_program_init(PIO pio, uint &sm_a15, uint &sm_cs, uint &sm_do,
+		uint pin_d0, uint pin_a15, uint pin_cs)
+{
+	pio_sm_config sm_config_a15;
+	pio_sm_config sm_config_cs;
+	pio_sm_config sm_config_do;
+	uint gb_bus_read_off, gb_bus_write_off;
+	const float div = 1;
+
+	*sm_a15 = 0;
+	*sm_cs = 1;
+	*sm_do = 2;
+
+	gb_bus_read_off = pio_add_program(pio, &gb_bus_read_program);
+	gb_bus_write_off = pio_add_program(pio, &gb_bus_write_program);
+
+	sm_config_a15 = gb_bus_read_program_get_default_config(gb_bus_read_off);
+	sm_config_cs = gb_bus_read_program_get_default_config(gb_bus_read_off);
+	sm_config_do = gb_bus_write_program_get_default_config(gb_bus_write_off);
+
+	/* Configure SM_A15 and SM_CS. */
+	/* Setting IN pins to all 30 bits on bus. */
+	sm_config_set_in_pins(&sm_config_a15, pin_d0, 30);
+	sm_config_set_in_pins(&sm_config_cs, pin_d0, 30);
+	/* Configure JMP pins to A15 or CS respectively. */
+	sm_config_set_jmp_pin(&sm_config_a15, pin_a15);
+	sm_config_set_jmp_pin(&sm_config_cs, pin_cs);
+	/* Set number of bits in RX FIFO to 30. */
+	sm_config_set_in_shift(&sm_config_a15, false, false, 30);
+
+	/* Set OUT pins to data. */
+	sm_config_set_out_pins(&sm_config_do, pin_d0, 8);
+	/* Set number of bits in TX FIFO to 8. */
+	sm_config_set_out_shift(&sm_config_do, false, false, 8);
+
+	sm_config_set_clkdiv(&sm_config_a15, div);
+	sm_config_set_clkdiv(&sm_config_cs, div);
+	sm_config_set_clkdiv(&sm_config_do, div);
+
+	/* Set all initial pindirs as inputs. */
+	pio_sm_set_consecutive_pindirs(pio, *sm_a15, pin_d0, 30, false);
+	pio_sm_set_consecutive_pindirs(pio, *sm_cs, pin_d0, 30, false);
+	pio_sm_set_consecutive_pindirs(pio, *sm_do, pin_d0, 30, false);
+
+	/* Allow PIO to set D[0-7] GPIO pins output. */
+	for(unsigned pin = pin_d0; pin < pin_d0 + 8; pin++)
+		pio_gpio_init(pio, pin);
+
+	/* Initialise all state machines. */
+	pio_sm_init(pio, *sm_a15, gb_bus_read_off, &sm_config_a15);
+	pio_sm_init(pio, *sm_cs, gb_bus_read_off, &sm_config_cs);
+	pio_sm_init(pio, *sm_do, gb_bus_write_off, &sm_config_do);
+
+	/* Enable IRQ0 to trigger when data in RX FIFO of SM_A15 or SM_CS. */
+	pio_set_irq0_source_mask_enabled(pio,
+		PIO_INTR_SM0_RXNEMPTY_LSB | PIO_INTR_SM1_RXNEMPTY_LSB,
+		true);
+
+    pio_sm_set_enabled(pio, *sm_a15, true);
+	pio_sm_set_enabled(pio, *sm_cs, true);
+	pio_sm_set_enabled(pio, *sm_do, true);
+}
+%}
