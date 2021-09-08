@@ -107,8 +107,9 @@ public gb_bus_write:
 
 % c-sdk {
 #include "hardware/clocks.h"
-void gb_bus_program_init(PIO pio, uint &sm_a15, uint &sm_cs, uint &sm_wr,
-		uint &sm_do, uint pin_d0, uint pin_a15, uint pin_cs, uint pin_wr)
+void gb_bus_program_init(PIO pio, uint *sm_a15, uint *sm_cs, uint *sm_wr,
+		uint *sm_do, uint pin_d0, uint pin_a15, uint pin_cs, uint pin_wr,
+		uint pin_datadir)
 {
 	pio_sm_config sm_config_a15, sm_config_cs, sm_config_do, sm_config_wr;
 	uint gb_bus_read_off, gb_bus_write_off;
@@ -129,9 +130,9 @@ void gb_bus_program_init(PIO pio, uint &sm_a15, uint &sm_cs, uint &sm_wr,
 
 	/* Configure SM_A15, SM_CS, and SM_WR. */
 	/* Setting IN pins to all 30 bits on bus. */
-	sm_config_set_in_pins(&sm_config_a15, pin_d0, 30);
-	sm_config_set_in_pins(&sm_config_cs, pin_d0, 30);
-	sm_config_set_in_pins(&sm_config_wr, pin_d0, 30);
+	sm_config_set_in_pins(&sm_config_a15, pin_d0);
+	sm_config_set_in_pins(&sm_config_cs, pin_d0);
+	sm_config_set_in_pins(&sm_config_wr, pin_d0);
 	/* Configure JMP pins to A15 or CS respectively. */
 	sm_config_set_jmp_pin(&sm_config_a15, pin_a15);
 	sm_config_set_jmp_pin(&sm_config_cs, pin_cs);
@@ -152,8 +153,8 @@ void gb_bus_program_init(PIO pio, uint &sm_a15, uint &sm_cs, uint &sm_wr,
 	sm_config_set_clkdiv(&sm_config_do, div);
 
 	/* Set sideset configuration for sm_do. */
-	sm_config_set_sideset(sm_config_do, 1, false, false);
-	sm_config_set_sideset_pins(sm_config_do, DATA_DIR);
+	sm_config_set_sideset(&sm_config_do, 1, false, false);
+	sm_config_set_sideset_pins(&sm_config_do, pin_datadir);
 
 	/* Set all initial pindirs as inputs. */
 	pio_sm_set_consecutive_pindirs(pio, *sm_a15, pin_d0, 30, false);
