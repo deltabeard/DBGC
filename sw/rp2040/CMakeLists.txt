@@ -9,9 +9,9 @@ project(rp2040_manager
 # initialize the Raspberry Pi Pico SDK
 pico_sdk_init()
 
-add_executable(rp2040_manager src/main.c src/comms.pio)
-
-target_link_libraries(rp2040_manager pico_stdlib)
+add_executable(rp2040_manager src/main.c)
+pico_generate_pio_header(rp2040_manager ${CMAKE_CURRENT_LIST_DIR}/src/comms.pio)
+target_link_libraries(rp2040_manager pico_stdlib hardware_pio)
 
 # create map/bin/hex/uf2 file in addition to ELF.
 pico_add_extra_outputs(rp2040_manager)
