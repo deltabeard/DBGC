@@ -126,12 +126,17 @@
         0.2,
         0.4,
         0.6,
-        1.0
+        1.0,
+        2.0
       ],
       "via_dimensions": [
         {
           "diameter": 0.0,
           "drill": 0.0
+        },
+        {
+          "diameter": 0.8,
+          "drill": 0.4
         },
         {
           "diameter": 1.0,
@@ -140,6 +145,10 @@
         {
           "diameter": 1.2,
           "drill": 0.6
+        },
+        {
+          "diameter": 1.4,
+          "drill": 0.8
         }
       ],
       "zones_allow_external_fillets": false,
@@ -378,14 +387,14 @@
         "name": "Default",
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "schematic_color": "rgba(0, 0, 0, 0.000)",
-        "track_width": 0.13,
-        "via_diameter": 0.7,
+        "track_width": 0.15,
+        "via_diameter": 0.8,
         "via_drill": 0.4,
         "wire_width": 6.0
       },
       {
         "bus_width": 12.0,
-        "clearance": 0.2,
+        "clearance": 0.15,
         "diff_pair_gap": 0.2,
         "diff_pair_via_gap": 0.25,
         "diff_pair_width": 0.127,
@@ -418,7 +427,6 @@
           "/D5",
           "/D6",
           "/D7",
-          "/Peripherals/RESET_GB",
           "PHI",
           "~{CS}",
           "~{RD}",
@@ -428,7 +436,7 @@
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.18,
-        "via_diameter": 0.7,
+        "via_diameter": 0.8,
         "via_drill": 0.4,
         "wire_width": 6.0
       },
@@ -446,15 +454,14 @@
           "+1V1",
           "+3V3",
           "+5V",
-          "/Peripherals/VBAT",
           "GB_5V",
           "VBUS"
         ],
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "track_width": 0.2,
-        "via_diameter": 0.7,
-        "via_drill": 0.4,
+        "via_diameter": 1.2,
+        "via_drill": 0.8,
         "wire_width": 6.0
       }
     ],
