@@ -2,8 +2,8 @@
 ;
 ; SM83/8080 bus communication for the Nintendo Game Boy.
 
-.define DATA_DIR 25
-.define PHI 26
+.define DATA_DIR    29
+.define PHI         2
 
 ; Four state machines are required:
 ; - One that should have the JUMP PIN set to A15. (SM_A15, gb_bus_read)
