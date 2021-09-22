@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.13)
 
 # initialize the SDK based on PICO_SDK_PATH
 include(pico_sdk_import.cmake)
-include(bin2h.cmake)
+
 project(gb_rp2040_cart
         VERSION 0.1.0.0
         DESCRIPTION "Game Boy Cart using the RP2040 microcontroller"
@@ -24,9 +24,16 @@ add_custom_command(OUTPUT gb_manager.gb
 add_custom_target(gb_manager ALL
         DEPENDS ${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb
         SOURCES sw/gb/src/gb_manager.c)
-bin2h(SOURCE_FILE "${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb"
-        HEADER_FILE "${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb.h"
-        VARIABLE_NAME "gb_manager_rom")
+
+add_custom_command(TARGET gb_manager
+        POST_BUILD
+        COMMAND ${CMAKE_COMMAND}
+            -DSOURCE_FILE="${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb"
+            -DOUTPUT_FILE="${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb.h"
+            -DVARIABLE_NAME="gb_manager_rom"
+            -P ${CMAKE_SOURCE_DIR}/gb2header.cmake
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Converting GB ROM to header file")
 
 # Initialize the Raspberry Pi Pico SDK
 pico_sdk_init()
