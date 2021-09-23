@@ -73,7 +73,7 @@ int i2c_rtc_read_temperature_i(i2c_inst_t *i2c, int8_t *t)
 		goto out;
 
 	/* Only read the most significant byte of the temperature value. */
-	ret = i2c_read_blocking(i2c, I2C_DS3231M_ADDR, t, 1, false);
+	ret = i2c_read_blocking(i2c, I2C_DS3231M_ADDR, (uint8_t *)t, 1, false);
 	if(ret != PICO_OK)
 		goto out;
 

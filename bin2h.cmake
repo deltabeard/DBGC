@@ -69,7 +69,6 @@ function(BIN2H)
 
     # converts the variable name into proper C identifier
     string(MAKE_C_IDENTIFIER "${BIN2H_VARIABLE_NAME}" BIN2H_VARIABLE_NAME)
-    string(TOUPPER "${BIN2H_VARIABLE_NAME}" BIN2H_VARIABLE_NAME)
 
     # declares byte array and the length variables
     set(arrayDefinition
