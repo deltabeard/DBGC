@@ -54,7 +54,7 @@ gb_bus_read_start:
 ;	setting of the JUMP PIN.
 ;	The misc pins (PHI, RD, CS) are included. The CPU will only need to
 ;	check RD, which if HIGH, is a write operation to external ROM/RAM.
-	in PINS, 30
+	in PINS, 27
 
 ;	Push address from ISR to RX FIFO
 ;	This is not required if autopush is enabled
@@ -75,7 +75,7 @@ gb_bus_cart_write_start:
 	jmp PIN read_data_byte
 
 ;   If RD was not HIGH, then go back to start.
-	jmp gb_bus_cart_write_start
+	jmp wait_for_new_clock
 
 read_data_byte:
 ;   Read data byte into ISR. The address will have already been read by the
@@ -86,6 +86,7 @@ read_data_byte:
 ;	This is not required if autopush is enabled
 	push noblock
 
+wait_for_new_clock:
 ;	Wait for new clock cycle of PHI.
 	wait 1 GPIO PHI
 .wrap

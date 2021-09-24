@@ -4,14 +4,25 @@
 #include <hardware/sync.h>
 #include <hardware/irq.h>
 #include <pico/binary_info.h>
-#include <pico/stdlib.h>
 #include <pico/bootrom.h>
+#include <pico/multicore.h>
 
 #include <main.h>
 #include <peripherals/io_expander.h>
 #include <peripherals/rtc.h>
 
 #include "comms.pio.h"
+
+void core1_entry(void)
+{
+	uint32_t g = multicore_fifo_pop_blocking();
+
+	/* TODO: Send data over USB. */
+	(void) g;
+
+	while (1)
+		tight_loop_contents();
+}
 
 void pio0_irq(void)
 {
@@ -23,8 +34,12 @@ void pio0_irq(void)
 	if(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15) == false)
 	{
 		uint32_t val = pio_sm_get(pio0, PIO_SM_A15);
-		/* | 8-bit Data | 16-bit Address | CS | RD | PHI | 00000 | */
-		/* |   Unused   |                | U  |    |  U  | UUUUU | */
+		/**
+		 * PIO_SM_A15 state machine RX value:
+		 * | 8-bit Data | 16-bit Address | CS | RD | PHI | 00000 |
+		 * | Unused     | Readable       | U  | R  | U   | UUUUU |
+		 * Legend: U-Unused, R-Readable
+		 */
 		bool rd;
 
 		address = (val & 0x00FFFF00) >> 8;
@@ -169,6 +184,7 @@ int main(void)
 
 	/* TODO: Initilise FRAM for RAM reading and writing. */
 
+	multicore_launch_core1(core1_entry);
 #if 0
 	/* Declare PIO pins for picoboot. */
 	bi_decl(bi_pin_range_with_func(PIO_PHI_3V3, PIO_PHI_DIR, GPIO_FUNC_PIO0));

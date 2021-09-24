@@ -47,19 +47,21 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()
 set(CMAKE_C_FLAGS_DEBUG "-g3 -Og -fanalyzer -Wall -Wextra")
-set(CMAKE_C_FLAGS_MINSIZEREL "-g2 -Os -Wall -Wextra -Werror")
-set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g2 -Ofast -Wall -Wextra -Werror")
-set(CMAKE_C_FLAGS_RELEASE ${CMAKE_C_FLAGS_RELWITHDEBINFO})
+set(CMAKE_C_FLAGS_MINSIZEREL "-g2 -Os -Wall -Wextra -DNDEBUG")
+set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g2 -Ofast -Wall -Wextra")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELWITHDEBINFO} -DNDEBUG")
 
 add_executable(gb_rp2040_cart
-        sw/rp2040/src/main.c sw/rp2040/src/io_expander.c sw/rp2040/src/rtc.c)
+        sw/rp2040/src/main.c sw/rp2040/src/io_expander.c sw/rp2040/src/rtc.c
+        sw/rp2040/src/usb_descriptors.c sw/rp2040/src/usb.c sw/rp2040/src/usb.h)
 add_dependencies(gb_rp2040_cart gb_manager)
 target_include_directories(gb_rp2040_cart PRIVATE sw/rp2040/inc)
 pico_generate_pio_header(gb_rp2040_cart
         ${CMAKE_CURRENT_LIST_DIR}/sw/rp2040/src/comms.pio)
 target_link_libraries(gb_rp2040_cart
-        pico_stdlib pico_binary_info pico_bootrom
-        hardware_pio hardware_i2c hardware_rtc hardware_irq)
+        pico_stdlib pico_binary_info pico_bootrom pico_unique_id pico_multicore
+        hardware_pio hardware_i2c hardware_rtc hardware_irq
+        tinyusb_device)
 
 # create map/bin/hex/uf2 file in addition to ELF.
 pico_add_extra_outputs(gb_rp2040_cart)
