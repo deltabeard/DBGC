@@ -19,10 +19,14 @@ if(NOT DEFINED ENV{GBDK_SDK_DIR})
     message(FATAL_ERROR "GBDK_SDK_DIR was not defined")
 endif()
 
-set(GBDK_C_COMPILER "$ENV{GBDK_SDK_DIR}/bin/lcc")
+if(NOT DEFINED ENV{GBDK_C_COMPILER})
+    set(ENV{GBDK_C_COMPILER} "$ENV{GBDK_SDK_DIR}/bin/lcc")
+endif()
+
 add_custom_command(OUTPUT gb_manager.gb
-        COMMAND ${GBDK_C_COMPILER}
+        COMMAND $ENV{GBDK_C_COMPILER}
         ARGS -Wa-l -Wl-m -Wl-j -Wm-p -Wm-ynGBMGR
+        -I$ENV{GBDK_SDK_DIR}/include
         -o ${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb sw/gb/src/gb_manager.c
         WORKING_DIRECTORY ${gb_rp2040_cart_SOURCE_DIR}
         COMMENT "Compiling GB ROM")
@@ -53,7 +57,7 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELWITHDEBINFO} -DNDEBUG")
 
 add_executable(gb_rp2040_cart
         sw/rp2040/src/main.c sw/rp2040/src/io_expander.c sw/rp2040/src/rtc.c
-        sw/rp2040/src/usb_descriptors.c sw/rp2040/src/usb.c sw/rp2040/src/usb.h)
+        sw/rp2040/src/usb_descriptors.c sw/rp2040/src/usb.c)
 add_dependencies(gb_rp2040_cart gb_manager)
 target_include_directories(gb_rp2040_cart PRIVATE sw/rp2040/inc)
 pico_generate_pio_header(gb_rp2040_cart
