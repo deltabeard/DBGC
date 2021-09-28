@@ -3065,7 +3065,7 @@
       (reference "#PWR0102") (unit 1) (value "~") (footprint "")
     )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/9e8cb4bf-2b73-43ec-96c5-d2451a6bc273"
-      (reference "BT1") (unit 1) (value "Battery_Cell") (footprint "Battery:BatteryHolder_MPD_BC2003_1x2032")
+      (reference "BT1") (unit 1) (value "Battery_Cell") (footprint "Battery:BatteryHolder_Keystone_3000_1x12mm")
     )
     (path "/a53ea846-ddb4-4534-9528-2b7f811fe827"
       (reference "C1") (unit 1) (value "100n") (footprint "Capacitor_SMD:C_0402_1005Metric")

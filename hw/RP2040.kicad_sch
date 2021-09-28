@@ -2254,7 +2254,7 @@
     (property "MFr" "0603WAF270JT5E" (id 7) (at 191.77 60.96 0)
       (effects (font (size 1.27 1.27)) hide)
     )
-    (property "Manufacturer" " UNI-ROYAL(Uniroyal Elec) " (id 8) (at 191.77 60.96 0)
+    (property "Manufacturer" "UNI-ROYAL(Uniroyal Elec) " (id 8) (at 191.77 60.96 0)
       (effects (font (size 1.27 1.27)) hide)
     )
     (pin "1" (uuid a448d810-b67c-4e2c-927f-f270f64c816b))
