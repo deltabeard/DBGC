@@ -29,6 +29,13 @@
 
 #define CFG_TUSB_RHPORT0_MODE   (OPT_MODE_DEVICE | OPT_MODE_FULL_SPEED)
 
+#ifndef CFG_TUSB_MCU
+#define CFG_TUSB_MCU		OPT_MCU_RP2040
+#endif
+#ifndef CFG_TUSB_OS
+#define CFG_TUSB_OS		OPT_OS_PICO
+#endif
+
 //------------- CLASS -------------//
 #define CFG_TUD_CDC               0
 #define CFG_TUD_MSC               0

@@ -1,3 +1,4 @@
+#include <sys/cdefs.h>
 #include <hardware/pio.h>
 #include <hardware/i2c.h>
 #include <hardware/rtc.h>
@@ -6,6 +7,10 @@
 #include <pico/binary_info.h>
 #include <pico/bootrom.h>
 #include <pico/multicore.h>
+#include <pico/unique_id.h>
+#include <usb.h>
+#include <tusb.h>
+#include <bsp/board.h>
 
 #include <main.h>
 #include <peripherals/io_expander.h>
@@ -13,18 +18,61 @@
 
 #include "comms.pio.h"
 
-void core1_entry(void)
+static inline void multicore_fifo_push_inline(uint32_t data)
 {
-	uint32_t g = multicore_fifo_pop_blocking();
+	if(multicore_fifo_wready() == false)
+		return;
 
-	/* TODO: Send data over USB. */
-	(void) g;
-
-	while (1)
-		tight_loop_contents();
+	sio_hw->fifo_wr = data;
+	__sev();
 }
 
-void pio0_irq(void)
+_Noreturn void core1_entry(void)
+{
+#if 1
+	tusb_init();
+
+	{
+		uint8_t buffer[5+PICO_UNIQUE_BOARD_ID_SIZE_BYTES];
+		buffer[0] = 'R';
+		buffer[1] = rp2040_rom_version();
+		buffer[2] = 'C';
+		buffer[3] = rp2040_chip_version();
+		buffer[4] = 'U';
+		pico_get_unique_board_id((pico_unique_board_id_t *) &buffer[5]);
+		tud_hid_report(0, buffer, sizeof(buffer));
+		tud_task();
+	}
+
+	while (1)
+	{
+		uint32_t buffer[8];
+		unsigned len = 0;
+
+		buffer[len++] = multicore_fifo_pop_blocking();
+		while(multicore_fifo_rvalid())
+		{
+			buffer[len++] = sio_hw->fifo_rd;
+			if(len == 8)
+				break;
+		}
+
+		if(tud_hid_ready())
+		{
+			uint8_t sz = len * sizeof(uint32_t);
+			tud_hid_report(0, buffer, sz);
+		}
+
+		tud_task();
+	}
+
+#else
+	while(1)
+		__wfi();
+#endif
+}
+
+void pio0_irq0(void)
 {
 #include "gb_manager.gb.h"
 	static uint_fast16_t address = 0;
@@ -42,6 +90,7 @@ void pio0_irq(void)
 		 */
 		bool rd;
 
+		multicore_fifo_push_inline(val);
 		address = (val & 0x00FFFF00) >> 8;
 		rd = (val & 0b01000000) != 0;
 
@@ -66,6 +115,7 @@ void pio0_irq(void)
 		uint32_t val = pio_sm_get(pio0, PIO_SM_CS);
 		bool rd;
 
+		multicore_fifo_push_inline(val);
 		address = (val & 0x00FFFF00) >> 8;
 		rd = (val & 0b01000000) != 0;
 		if(rd == true)
@@ -86,7 +136,7 @@ void pio0_irq(void)
 		/* This state machine requires the previously acquired address
 		 * value. */
 
-		(void) val;
+		multicore_fifo_push_inline(val);
 		/* TODO: Implement banking. */
 		/* TODO: Implement RAM writing. */
 	}
@@ -214,7 +264,7 @@ int main(void)
 			PIO_INTR_SM1_RXNEMPTY_LSB |
 			PIO_INTR_SM2_RXNEMPTY_LSB,
 			true);
-		irq_set_exclusive_handler(PIO0_IRQ_0, pio0_irq);
+		irq_set_exclusive_handler(PIO0_IRQ_0, pio0_irq0);
 		irq_set_enabled(PIO0_IRQ_0, true);
 
 		/* Enable state machines. */
@@ -232,7 +282,10 @@ int main(void)
 	/* Sleep until we receive read or write instructions from the Game Boy.
 	 */
 	while(1)
+	{
 		__wfi();
+		tight_loop_contents();
+	}
 
 	__builtin_unreachable();
 	return 0;

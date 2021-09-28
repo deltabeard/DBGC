@@ -1,3 +1,3 @@
 #pragma once
 
-void core1_entry(void);
+void irq_usbctrl(void);

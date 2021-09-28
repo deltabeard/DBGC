@@ -68,14 +68,14 @@ uint8_t const *tud_descriptor_device_cb(void)
 // HID Report Descriptor
 //--------------------------------------------------------------------+
 
-uint8_t const desc_hid_report[] = {
+static const uint8_t desc_hid_report[] = {
 	TUD_HID_REPORT_DESC_GENERIC_INOUT(CFG_TUD_HID_EP_BUFSIZE)
 };
 
 // Invoked when received GET HID REPORT DESCRIPTOR
 // Application return pointer to descriptor
 // Descriptor contents must exist long enough for transfer to complete
-uint8_t const *tud_hid_descriptor_report_cb(uint8_t itf)
+const uint8_t *tud_hid_descriptor_report_cb(uint8_t itf)
 {
 	(void) itf;
 	return desc_hid_report;
@@ -90,7 +90,7 @@ enum {
 	ITF_NUM_TOTAL
 };
 
-#define  CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN)
+#define CONFIG_TOTAL_LEN  (TUD_CONFIG_DESC_LEN + TUD_HID_INOUT_DESC_LEN)
 #define EPNUM_HID   0x01
 
 // Invoked when received GET CONFIGURATION DESCRIPTOR
@@ -147,12 +147,13 @@ const uint16_t *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 			"Deltabeard's Game Boy Cart",
 		};
 		const char *str = string_desc_arr[index];
+		chr_count = strlen(str);
 
 		// Convert ASCII string into UTF-16
 		for(uint8_t i = 0; i < chr_count; i++)
-		{
 			desc[1 + i] = str[i];
-		}
+
+		break;
 	}
 	/* 3: Serial. */
 	case 3:
@@ -167,9 +168,8 @@ const uint16_t *tud_descriptor_string_cb(uint8_t index, uint16_t langid)
 		chr_count = strlen(id_buf);
 		// Convert ASCII string into UTF-16
 		for(uint8_t i = 0; i < chr_count; i++)
-		{
 			desc[1 + i] = id_buf[i];
-		}
+
 		break;
 	}
 	default:
