@@ -27,11 +27,15 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELWITHDEBINFO} -DNDEBUG")
 
 add_executable(dbgc_verify src/verify.c)
 target_include_directories(dbgc_verify PRIVATE inc)
-pico_enable_stdio_usb(dbgc_verify ENABLED)
-pico_enable_stdio_uart(dbgc_verify DISABLED)
+target_compile_definitions(dbgc_verify PRIVATE
+        PICO_STDIO_ENABLE_CRLF_SUPPORT=0
+        PICO_STDIO_DEFAULT_CRLF=0)
 target_link_libraries(dbgc_verify
-        pico_stdlib pico_binary_info pico_bootrom
-        hardware_i2c hardware_rtc)
+        pico_stdlib pico_stdio pico_bootrom
+        hardware_clocks hardware_i2c
+        pico_binary_info)
+pico_enable_stdio_usb(dbgc_verify 1)
+pico_enable_stdio_uart(dbgc_verify 0)
 
 # create map/bin/hex/uf2 file in addition to ELF.
 pico_add_extra_outputs(dbgc_verify)
