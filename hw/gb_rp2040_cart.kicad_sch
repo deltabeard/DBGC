@@ -6,8 +6,8 @@
 
   (title_block
     (title "RP2040 Game Boy Cart")
-    (date "2021-08-31")
-    (rev "0.2a")
+    (date "2021-09-29")
+    (rev "0.3a")
     (company "Mahyar Koshkouei")
     (comment 1 "All Rights Reserved")
     (comment 2 "Compatible with DMG, MGB, & CGB. Collectively referred to as \"GB\" here.")
@@ -3064,6 +3064,9 @@
     (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/3253b531-065b-4348-a2c3-19885873c12f"
       (reference "#PWR0102") (unit 1) (value "~") (footprint "")
     )
+    (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/9c5beb2c-35b3-4ed8-8d2b-d58f8efa4a65"
+      (reference "#PWR0103") (unit 1) (value "GND") (footprint "")
+    )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/9e8cb4bf-2b73-43ec-96c5-d2451a6bc273"
       (reference "BT1") (unit 1) (value "Battery_Cell") (footprint "Battery:BatteryHolder_Keystone_3000_1x12mm")
     )
@@ -3214,11 +3217,11 @@
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/78ad1210-ae25-4c20-95fd-6a78ba665c31"
       (reference "SW1") (unit 1) (value "SW_DPST") (footprint "Project_Specific:K2-1114SA-A4SW-06")
     )
+    (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/12951b76-d335-43cb-9eca-fac6b5e5da6c"
+      (reference "SW2") (unit 1) (value "SW_Push") (footprint "Button_Switch_SMD:SW_SPST_CK_RS282G05A3")
+    )
     (path "/2b779f4c-4236-45df-ab0a-1c3902673815"
       (reference "TP1") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
-    )
-    (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/abbe453f-ee52-4066-ac4e-52eae420d54b"
-      (reference "TP2") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
     )
     (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/3fac8531-0992-479a-a995-f18fedcfd603"
       (reference "TP4") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
