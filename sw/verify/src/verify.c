@@ -6,11 +6,19 @@
 #include <pico/binary_info.h>
 #include <hardware/i2c.h>
 #include <hardware/clocks.h>
+#include <hardware/rtc.h>
 #include <string.h>
 #include <stdlib.h>
+#include <pico/util/datetime.h>
 
-#define arraysize(array)	(sizeof(array)/sizeof(array[0]))
+#define ARRAYSIZE(array)	(sizeof(array)/sizeof(array[0]))
 #define CLR_SCRN		"\033[2J"
+
+#define I2C_PCA9536_ADDR 0b01000001
+#define I2C_DS3231M_ADDR 0b01101000
+
+#define CURRENT_MILLENNIUM	21
+#define RTC_YEARS_EPOCH		((CURRENT_MILLENNIUM - 1) * 100)
 
 struct func_map {
 	char *long_arg;
@@ -22,17 +30,225 @@ void func_help(const char *cmd);
 void func_i2cscan(const char *cmd);
 void func_i2csend(const char *cmd);
 void func_i2crecv(const char *cmd);
+void func_rtctemp(const char *cmd);
+void func_rtcread(const char *cmd);
+void func_rtcwrite(const char *cmd);
+void func_date(const char *cmd);
 void func_reboot(const char *cmd);
 
 static const struct func_map map[] = {
-	{ "HELP", "Print usage information",	func_help },
-	{ "I2C SCAN", "Perform I2C bus scan",	func_i2cscan },
-	{ "I2C SEND", "Send bytes 0xDD to address 0xAA on I2C bus 'I2C SEND "
-		      "0xAA 0xDD [0xDD ...]'", func_i2csend },
-	{ "I2C RECV", "Receive a byte from address 0xAA on I2C bus 'I2C "
-		      "RECV 0xAA'", func_i2crecv },
-	{ "REBOOT", "Reboot to USBBOOT",	func_reboot },
+	{ "HELP",	"Print usage information",		func_help    },
+	{ "I2C SCAN",	"Perform I2C bus scan",			func_i2cscan },
+	{ "I2C SEND",	"Send bytes 0xDD to address 0xAA on I2C bus 'I2C SEND "
+		      	"0xAA 0xDD [0xDD ...]'",		func_i2csend },
+	{ "I2C RECV",	"Receive a byte from address 0xAA on I2C bus 'I2C "
+			"RECV 0xAA'",				func_i2crecv },
+	{ "RTC TEMP",	"Read temperature from RTC",		func_rtctemp },
+	{ "RTC READ",	"Read date and time from RTC and set internal RTC",
+		func_rtcread },
+	{ "RTC WRITE",	"Write date and time to internal RTC and set external"
+			      " RTC \n"
+			      "\t'RTC WRITE <DOTW>:<DAY>/<MONTH>/<YEAR> "
+			      "<HOUR>:<MIN>:<SEC>'",
+			      func_rtcwrite },
+	{ "DATE",	"Read date and time from internal RTC", func_date },
+	{ "REBOOT",	"Reboot to USBBOOT",			func_reboot  }
 };
+
+typedef enum {
+	RTC_SEC = 0,
+	RTC_MIN,
+	RTC_HOUR,
+	RTC_DAY,
+	RTC_DATE,
+	RTC_MONTH,
+	RTC_YEAR,
+	RTC_ALARM1_SEC,
+	RTC_ALARM1_MIN,
+	RTC_ALARM1_HOUR,
+	RTC_ALARM1_DAY,
+	RTC_ALARM1_DATE,
+	RTC_ALARM2_MIN,
+	RTC_ALARM2_HOUR,
+	RTC_ALARM2_DAY,
+	RTC_ALARM2_DATE,
+	RTC_CONTROL,
+	RTC_CONTROL_STATUS,
+	RTC_CONTROL_AGING,
+	RTC_CONTROL_TEMP_MSB = 0x11,
+	RTC_CONTROL_TEMP_LSB = 0x12
+} rtc_reg;
+
+inline uint8_t bcd_to_int(uint8_t x)
+{
+	return x - 6 * (x >> 4);
+}
+
+uint8_t decToBcd(uint8_t val)
+{
+	return ((val/10*16) + (val%10));
+}
+
+void func_rtcwrite(const char *cmd)
+{
+	int ret;
+	datetime_t dt;
+	uint8_t tx[8];
+
+	tx[0] = RTC_SEC;
+
+	//RTC WRITE <DOTW>:<DAY>/<MONTH>/<YEAR> <HOUR>:<MIN>:<SEC>
+	ret = sscanf(cmd, "RTC WRITE %hhd:%hhd/%hhd/%hd %hhd:%hhd:%hhd",
+		&dt.dotw, &dt.day, &dt.month, &dt.year,
+		&dt.hour, &dt.min, &dt.sec);
+	if(ret != 7)
+	{
+		printf("sscanf acquired only %d items of %d from string "
+		       "'%s'\n", ret, 7, cmd);
+		return;
+	}
+
+	if(rtc_set_datetime(&dt) == false)
+	{
+		printf("Failed to set internal RTC\n");
+		return;
+	}
+
+	dt.year -= RTC_YEARS_EPOCH;
+	tx[1] = dt.sec;
+	tx[2] = dt.min;
+	tx[3] = dt.hour;
+	tx[4] = dt.dotw + 1;
+	tx[5] = dt.day;
+	tx[6] = dt.month;
+	tx[7] = dt.year;
+
+	for(unsigned i = 1; i < sizeof(tx); i++)
+	{
+		printf("%hd\t", tx[i]);
+		tx[i] = decToBcd(tx[i]);
+	}
+	printf("\n");
+
+	for(unsigned i = 1; i < sizeof(tx); i++)
+	{
+		printf("%#04x\t", tx[i]);
+	}
+	printf("\n");
+
+	/* Set 24-hour bit of hour register. */
+	tx[3] |= 0b01000000;
+
+	ret = i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR,
+		tx, sizeof(tx), false);
+	if(ret == PICO_ERROR_GENERIC)
+	{
+		printf("Error setting external RTC\n");
+		return;
+	}
+
+	func_date(NULL);
+	return;
+}
+
+void func_rtcread(const char *cmd)
+{
+	uint8_t tx = RTC_SEC;
+	uint8_t rx[RTC_YEAR + 1];
+	int ret;
+	datetime_t dt;
+
+	(void) cmd;
+
+	/* Select second register. */
+	ret = i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR, &tx, 1, false);
+	if(ret == PICO_ERROR_GENERIC)
+	{
+		printf("Error writing to RTC: %d\n", ret);
+		return;
+	}
+
+	/* Read time values. */
+	ret = i2c_read_blocking(i2c_default, I2C_DS3231M_ADDR, rx, sizeof(rx), false);
+	if(ret == PICO_ERROR_GENERIC)
+	{
+		printf("Error reading from RTC: %d\n", ret);
+		return;
+	}
+
+	dt.sec  = bcd_to_int(rx[RTC_SEC]);
+	dt.min  = bcd_to_int(rx[RTC_MIN]);
+	dt.hour = bcd_to_int(rx[RTC_HOUR] & 0b00111111);
+	dt.dotw = rx[RTC_DAY] - 1;
+	dt.day  = bcd_to_int(rx[RTC_DATE]);
+	dt.month = bcd_to_int(rx[RTC_MONTH] & 0b00011111);
+	dt.year = bcd_to_int(rx[RTC_YEAR]) + RTC_YEARS_EPOCH;
+	/* TODO: Year 3000 problem? */
+
+	rtc_init();
+	if(rtc_set_datetime(&dt) == false)
+	{
+		printf("Datetime is not valid\n");
+		return;
+	}
+
+	func_date(NULL);
+
+	return;
+}
+
+void func_date(const char *cmd)
+{
+	char datetime_buf[256];
+	char *datetime_str = &datetime_buf[0];
+	datetime_t dt;
+
+	(void) cmd;
+
+	if(rtc_get_datetime(&dt) == false)
+	{
+		printf("RTC is not initialised\n");
+		return;
+	}
+	datetime_to_str(datetime_str, sizeof(datetime_buf), &dt);
+	printf("%s\n", datetime_str);
+}
+
+void func_rtctemp(const char *cmd)
+{
+	uint8_t tx = RTC_CONTROL_TEMP_MSB;
+	uint8_t rx[2];
+	const char *frac[4] = {
+		".00", ".25", ".50", ".75"
+	};
+	int ret;
+	int8_t t;
+
+	(void) cmd;
+
+	/* Select first temperature register. */
+	ret = i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR, &tx, 1, false);
+	if(ret == PICO_ERROR_GENERIC)
+	{
+		printf("Error writing to RTC: %d\n", ret);
+		return;
+	}
+
+	/* Read both temperature registers. */
+	ret = i2c_read_blocking(i2c_default, I2C_DS3231M_ADDR, rx, sizeof(rx), false);
+	if(ret == PICO_ERROR_GENERIC)
+	{
+		printf("Error reading from RTC: %d\n", ret);
+		return;
+	}
+
+	t = (int8_t)rx[0];
+
+	rx[1] >>= 6;
+	printf("Temperature: %d%s Celsius\n", t, frac[rx[1]]);
+
+	return;
+}
 
 // I2C reserves some addresses for special purposes. We exclude these from the scan.
 // These are any addresses of the form 000 0xxx or 111 1xxx
@@ -48,8 +264,13 @@ void func_i2cscan(const char *cmd)
 	printf("\nI2C Bus Scan\n");
 	printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
 
-	for (int addr = 0; addr < (1 << 7); ++addr) {
-		if (addr % 16 == 0) {
+	for (int addr = 0; addr < (1 << 7); ++addr)
+	{
+		int ret;
+		uint8_t rxdata;
+
+		if (addr % 16 == 0)
+		{
 			printf("%02x ", addr);
 		}
 
@@ -59,8 +280,6 @@ void func_i2cscan(const char *cmd)
 		// -1.
 
 		// Skip over any reserved addresses.
-		int ret;
-		uint8_t rxdata;
 		if (reserved_addr(addr))
 			ret = PICO_ERROR_GENERIC;
 		else
@@ -173,7 +392,7 @@ void func_help(const char *cmd)
 	(void) cmd;
 
 	puts("Usage:");
-	for(unsigned i = 0; i < arraysize(map); i++)
+	for(unsigned i = 0; i < ARRAYSIZE(map); i++)
 	{
 		printf("%s: %s\r", map[i].long_arg, map[i].help);
 	}
@@ -191,8 +410,16 @@ int main(void)
 	gpio_disable_pulls(PICO_DEFAULT_I2C_SDA_PIN);
 	gpio_disable_pulls(PICO_DEFAULT_I2C_SCL_PIN);
 	// Make the I2C pins available to picotool
-	bi_decl(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN, PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
+	bi_decl(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN,
+		PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
 
+	{
+		uint8_t tx[2];
+		tx[0] = RTC_CONTROL;
+		tx[1] = 0b00111100;
+		i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR, tx,
+			sizeof(tx), false);
+	}
 
 	/* If baudrate is set to PICO_STDIO_USB_RESET_MAGIC_BAUD_RATE, then the
 	 * RP2040 will reset to BOOTSEL mode. */
@@ -216,7 +443,7 @@ new_cmd:
 	if(buf[0] == '\0')
 		strcpy(buf, "<no input>");
 
-	for(unsigned i = 0; i < arraysize(map); i++)
+	for(unsigned i = 0; i < ARRAYSIZE(map); i++)
 	{
 		if(strncmp(buf, map[i].long_arg, strlen(map[i].long_arg)) != 0)
 			continue;

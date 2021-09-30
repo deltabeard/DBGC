@@ -32,7 +32,7 @@ target_compile_definitions(dbgc_verify PRIVATE
         PICO_STDIO_DEFAULT_CRLF=0)
 target_link_libraries(dbgc_verify
         pico_stdlib pico_stdio pico_bootrom
-        hardware_clocks hardware_i2c
+        hardware_clocks hardware_i2c hardware_rtc
         pico_binary_info)
 pico_enable_stdio_usb(dbgc_verify 1)
 pico_enable_stdio_uart(dbgc_verify 0)
