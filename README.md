@@ -18,9 +18,8 @@ The flash storage will be partitioned to allow the user to either support large 
 
 | Partition | Size | Purpose |
 |-----------|  --: |---------|
-| Firmware | 128KiB | Stores firmware for the RP2040 |
-| ROM | 2MiB | Holds currently playing ROM in uncompressed format |
-| Storage | Remainder | Wear-levelling filesystem holding compressed ROMs and save files |
+| Firmware | 256KiB | Stores firmware for the RP2040 |
+| Storage | Remainder | Wear-levelling filesystem holding ROMs and save files |
 
 ### USB-C Networking
 
