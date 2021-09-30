@@ -3068,7 +3068,7 @@
       (reference "#PWR0103") (unit 1) (value "GND") (footprint "")
     )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/9e8cb4bf-2b73-43ec-96c5-d2451a6bc273"
-      (reference "BT1") (unit 1) (value "Battery_Cell") (footprint "Battery:BatteryHolder_Keystone_3000_1x12mm")
+      (reference "BT1") (unit 1) (value "Battery_Cell") (footprint "Project_Specific:MY-2032-11")
     )
     (path "/a53ea846-ddb4-4534-9528-2b7f811fe827"
       (reference "C1") (unit 1) (value "100n") (footprint "Capacitor_SMD:C_0402_1005Metric")
@@ -3239,28 +3239,28 @@
       (reference "TP8") (unit 1) (value "GND") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
     )
     (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/59d82817-ba6e-444d-91c1-49ad68cb7e79"
-      (reference "TP38") (unit 1) (value "TestPoint_Small") (footprint "Project_Specific:TestPoint_Pad_D0.5mm")
+      (reference "TP38") (unit 1) (value "TestPoint_Small") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
     )
     (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/bff6d085-fe9f-4131-b0a4-439beb9a4262"
-      (reference "TP39") (unit 1) (value "TestPoint_Small") (footprint "Project_Specific:TestPoint_Pad_D0.5mm")
+      (reference "TP39") (unit 1) (value "TestPoint_Small") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
     )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/5727496e-d4ef-475d-8eee-d50cbe4a4c8c"
-      (reference "TP40") (unit 1) (value "TestPoint_Small") (footprint "Project_Specific:TestPoint_Pad_D0.5mm")
+      (reference "TP40") (unit 1) (value "TestPoint_Small") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
     )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/09378f3c-d2e9-4735-8e60-d037804f0893"
-      (reference "TP41") (unit 1) (value "TestPoint_Small") (footprint "Project_Specific:TestPoint_Pad_D0.5mm")
+      (reference "TP41") (unit 1) (value "TestPoint_Small") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
     )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/df3ce65d-05c1-4a98-80be-e83786f4c71d"
-      (reference "TP42") (unit 1) (value "TestPoint_Small") (footprint "Project_Specific:TestPoint_Pad_D0.5mm")
+      (reference "TP42") (unit 1) (value "TestPoint_Small") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
     )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/be5c72df-4f05-4dfe-82e5-bbc6352386b5"
-      (reference "TP43") (unit 1) (value "TestPoint_Small") (footprint "Project_Specific:TestPoint_Pad_D0.5mm")
+      (reference "TP43") (unit 1) (value "TestPoint_Small") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
     )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/bd91be72-8a59-4b79-9317-2ed5aab4a377"
-      (reference "TP44") (unit 1) (value "TestPoint_Small") (footprint "Project_Specific:TestPoint_Pad_D0.5mm")
+      (reference "TP44") (unit 1) (value "TestPoint_Small") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
     )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/3d3ff42e-1e41-4d4a-b8be-08ebb08d90be"
-      (reference "TP45") (unit 1) (value "TestPoint_Small") (footprint "Project_Specific:TestPoint_Pad_D0.5mm")
+      (reference "TP45") (unit 1) (value "TestPoint_Small") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
     )
     (path "/97c12b61-e823-42ef-96a0-22d01b93b953"
       (reference "U1") (unit 1) (value "SN74LVC8T245PW") (footprint "Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm")

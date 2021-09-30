@@ -34,8 +34,8 @@
         "other_text_upright": false,
         "pads": {
           "drill": 0.0,
-          "height": 3.3,
-          "width": 3.5
+          "height": 1.4,
+          "width": 1.0
         },
         "silk_line_width": 0.15,
         "silk_text_italic": false,
@@ -44,7 +44,7 @@
         "silk_text_thickness": 0.15,
         "silk_text_upright": false,
         "zones": {
-          "45_degree_only": false,
+          "45_degree_only": true,
           "min_clearance": 0.19999999999999998
         }
       },
@@ -491,7 +491,7 @@
       }
     ],
     "meta": {
-      "version": 1
+      "version": 2
     },
     "net_colors": null
   },
