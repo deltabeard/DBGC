@@ -1,0 +1,124 @@
+; Copyright (c) 2021 Mahyar Koshkouei
+;
+; SM83/8080 bus communication for the Nintendo Game Boy.
+
+.define PHI         2
+.define A15         20
+
+; Read address and RD pin from GB bus.
+.program gb_bus_read
+gb_bus_read_start:
+;	Wait for a new clock cycle, and hence for a new read/write instruction.
+	wait 1 GPIO PHI
+
+;   Only continue if A15 is low
+	jmp PIN gb_bus_read_start
+
+;	Read address into ISR.
+	in PINS, 16
+
+;	Push address from ISR to RX FIFO
+;	This is not required if autopush is enabled
+	push noblock
+
+;	Wait for next instruction
+    wait 0 GPIO PHI
+.wrap
+
+; Send data to the Game Boy. This is done when the Game Boy is performing a read
+; operation of an address.
+.program gb_bus_write
+
+; Side-set pin is DATA_DIR
+.side_set 1
+
+public gb_bus_write:
+;	Pull data from TX FIFO to OSR
+;	This is not required if autopull is enabled
+	pull ifempty block  side 0
+
+;	Output data from OSR to data pins
+	out PINS,8          side 0
+
+;	Set Data pins to OUTPUT.
+;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
+	mov osr, ~null	    side 0	; Set OSR to all ones
+    out pindirs, 8	    side 1	; Output ones to data pindirs
+							    ; Side: set DATA_DIR to RP2040 -> GB (B -> A)
+
+;	Prepare to set Data pins to INPUT. This is executed later.
+	mov osr,  null      side 1  ; Set OSR to all zeros
+
+;	Keep data output active until new clock cycle.
+;	TODO: Maybe change this to HIGH EDGE IRQ on PHI?
+	wait 0 GPIO PHI     side 1	; Just in case we write really early.
+	wait 1 GPIO PHI     side 1
+
+;	Set Data pins to INPUT.
+;	This is done as soon as possible to ensure that Data pins are set to INPUT
+;	before the gb_bus program reads in all 30 pins.
+	out pindirs, 8	    side 0	; Output zeros to data pindirs
+							    ; Side: set DATA_DIR to GB -> RP2040 after wait
+							    ;						(A -> B)
+
+;	Wait for next data output
+.wrap
+
+
+% c-sdk {
+#include <hardware/clocks.h>
+#include <core2.h>
+
+void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_do)
+{
+	pio_sm_config sm_config_a15, sm_config_do;
+	uint gb_bus_read_off, gb_bus_write_off;
+	const float div = 1.0f;
+
+	gb_bus_read_off = pio_add_program(pio, &gb_bus_read_program);
+	gb_bus_write_off = pio_add_program(pio, &gb_bus_write_program);
+
+	sm_config_a15 = gb_bus_read_program_get_default_config(gb_bus_read_off);
+	sm_config_do = gb_bus_write_program_get_default_config(gb_bus_write_off);
+
+	/* Configure SM_A15, and SM_CS. */
+	/* Setting the "IN" pins on "gb_bus_read" state machines. */
+	sm_config_set_in_pins(&sm_config_a15, PIO_A0);
+	/* Configure "OUT" pins to the data bus. */
+    sm_config_set_out_pins(&sm_config_do, PIO_D0, NUM_DATA_PINS);
+
+    /* Configure "JMP" pins. */
+    sm_config_set_jmp_pin(&sm_config_a15, PIO_A15);
+
+	/* Set number of bits in RX FIFO. */
+	/* gb_bus_write does not use a RX FIFO. */
+	/* TODO: Enable autopush. */
+	sm_config_set_in_shift(&sm_config_a15, true, false, NUM_ADDRESS_PINS);
+	/* Set number of bits in TX FIFO. */
+	/* gb_bus_read does not use a TX FIFO. */
+	sm_config_set_out_shift(&sm_config_do, false, false, NUM_DATA_PINS);
+
+    /* Set clock speed of PIO state machines. */
+	sm_config_set_clkdiv(&sm_config_a15, div);
+	sm_config_set_clkdiv(&sm_config_do,  div);
+
+	/* Set "sideset" configuration to allow DATA_DIR to be changed on each
+	 * instruction for the sm_do state machine. */
+	sm_config_set_sideset(&sm_config_do, 1, false, false);
+	sm_config_set_sideset_pins(&sm_config_do, PIO_DIR);
+
+	/* Set all initial pindirs as inputs. */
+	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_A0, NUM_ADDRESS_PINS, false);
+	pio_sm_set_consecutive_pindirs(pio, sm_do,  PIO_D0, NUM_DATA_PINS,  false);
+
+	/* Allow PIO to set D[0-7] GPIO pins output. */
+	for(unsigned pin = PIO_D0; pin <= PIO_D7; pin++)
+		pio_gpio_init(pio, pin);
+
+	pio_gpio_init(pio, PIO_DIR);
+
+	/* Initialise all state machines. */
+	pio_sm_init(pio, sm_a15, gb_bus_read_off,       &sm_config_a15);
+	pio_sm_init(pio, sm_do,  gb_bus_write_off,      &sm_config_do);
+}
+%}

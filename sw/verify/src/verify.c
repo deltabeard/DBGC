@@ -1,3 +1,6 @@
+#include <sys/timespec.h>
+#include <sys/cdefs.h>
+
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -10,6 +13,8 @@
 #include <string.h>
 #include <stdlib.h>
 #include <pico/util/datetime.h>
+#include <core2.h>
+#include <pico/multicore.h>
 
 #define ARRAYSIZE(array)	(sizeof(array)/sizeof(array[0]))
 #define CLR_SCRN		"\033[2J"
@@ -33,6 +38,10 @@ void func_i2crecv(const char *cmd);
 void func_rtctemp(const char *cmd);
 void func_rtcread(const char *cmd);
 void func_rtcwrite(const char *cmd);
+void func_gb(const char *cmd);
+
+void func_pio(const char *cmd);
+void func_bus(const char *cmd);
 void func_date(const char *cmd);
 void func_reboot(const char *cmd);
 
@@ -49,7 +58,11 @@ static const struct func_map map[] = {
 	{ "RTC WRITE",	"Write date and time to internal RTC and set external RTC \n"
 			"\t'RTC WRITE <DOTW>:<DAY>/<MONTH>/<YEAR> <HOUR>:<MIN>:<SEC>'",
 			      					func_rtcwrite	},
+	{ "GB",		"Turn GB on (0) or off (1)\n"
+			       "\t'GB 1'",			func_gb		},
 	{ "DATE",	"Read date and time from internal RTC",	func_date	},
+	{ "PIO",	"Display state of PIO",			func_pio	},
+	{ "BUS",	"Display PIO/GB bus",			func_bus	},
 	{ "REBOOT",	"Reboot to USBBOOT",			func_reboot 	}
 };
 
@@ -76,6 +89,117 @@ typedef enum {
 	RTC_CONTROL_TEMP_MSB = 0x11,
 	RTC_CONTROL_TEMP_LSB = 0x12
 } rtc_reg;
+
+typedef enum {
+	IO_EXP_INPUT_PORT = 0,
+	IO_EXP_OUTPUT_PORT,
+	IO_EXP_INVERSION,
+	IO_EXP_DIRECTION
+} io_exp_reg;
+
+#include <core2.h>
+#include <hardware/pio.h>
+#include <hardware/irq.h>
+#include "comms.pio.h"
+
+void func_pio(const char *cmd)
+{
+	unsigned times = 1;
+	func_gb("GB 0");
+	pio_sm_clear_fifos(pio0, PIO_SM_A15);
+
+	while (getchar_timeout_us(0) == PICO_ERROR_TIMEOUT)
+	{
+		/**
+		 * PIO_SM_A15 state machine RX value:
+		 * | 8-bit Data | 16-bit Address | CS | RD | PHI | 00000 |
+		 * | Unused     | Readable       | U  | R  | U   | UUUUU |
+		 * Legend: U-Unused, R-Readable
+		 */
+		if (pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15) == false)
+		{
+			unsigned address;
+
+			address = pio_sm_get(pio0, PIO_SM_A15);
+			address >>= 16;
+			pio_sm_put(pio0, PIO_SM_DO, 0x00);
+			printf("0x%04X\t", address);
+
+			if(times % 8 == 0)
+				puts("");
+
+			times++;
+		}
+	}
+
+	printf("Exiting PIO printing\n");
+	return;
+}
+
+void func_bus(const char *cmd)
+{
+	/* Power cycle GB. */
+	func_gb("GB 1");
+	sleep_ms(10);
+	func_gb("GB 0");
+
+	pio_sm_clear_fifos(pio0, PIO_SM_A15);
+	pio_sm_clear_fifos(pio0, PIO_SM_DO);
+
+	puts("ADDR\tPIO\t~RD\t~CS\tA15-PC\tDO-PC");
+
+	while (getchar_timeout_us(0) == PICO_ERROR_TIMEOUT)
+	{
+		/**
+		 * PIO_SM_A15 state machine RX value:
+		 * | 8-bit Data | 16-bit Address | CS | RD | PHI | 00000 |
+		 * | Unused     | Readable       | U  | R  | U   | UUUUU |
+		 * Legend: U-Unused, R-Readable
+		 */
+		if (pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15) == false)
+		{
+			unsigned address;
+
+			printf("0x%04X\t%hhu\t%hhu\t%hhu\t%hhu\t%hhu\n",
+			       address,
+			       gpio_get(PIO_PHI), gpio_get(PIO_NRD),
+			       gpio_get(PIO_NCS),
+			       pio_sm_get_pc(pio0, PIO_SM_DO),
+			       pio_sm_get_pc(pio0, PIO_SM_DO));
+
+			address = pio_sm_get(pio0, PIO_SM_A15);
+			address >>= 16;
+			printf("0x%04X\t%hhu\t%hhu\t%hhu\t%hhu\t%hhu\n",
+			       address,
+			       gpio_get(PIO_PHI), gpio_get(PIO_NRD),
+			       gpio_get(PIO_NCS),
+			       pio_sm_get_pc(pio0, PIO_SM_DO),
+			       pio_sm_get_pc(pio0, PIO_SM_DO));
+
+			pio_sm_put(pio0, PIO_SM_DO, 0x0F);
+			printf("0x%04X\t%hhu\t%hhu\t%hhu\t%hhu\t%hhu\n",
+			       address,
+			       gpio_get(PIO_PHI), gpio_get(PIO_NRD),
+			       gpio_get(PIO_NCS),
+			       pio_sm_get_pc(pio0, PIO_SM_DO),
+			       pio_sm_get_pc(pio0, PIO_SM_DO));
+
+			do
+			{
+				printf("0x%04X\t%hhu\t%hhu\t%hhu\t%hhu\t%hhu\n",
+				       address,
+				       gpio_get(PIO_PHI), gpio_get(PIO_NRD),
+				       gpio_get(PIO_NCS),
+				       pio_sm_get_pc(pio0, PIO_SM_DO),
+				       pio_sm_get_pc(pio0, PIO_SM_DO));
+			}
+			while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15) == true);
+		}
+	}
+
+	printf("Exiting PIO printing\n");
+	return;
+}
 
 inline uint8_t bcd_to_int(uint8_t x)
 {
@@ -379,6 +503,30 @@ void func_i2crecv(const char *cmd)
 	}
 }
 
+void func_gb(const char *cmd)
+{
+	bool turn_gb_on;
+
+	cmd += strlen("GB ");
+	if(*cmd == '1')
+		turn_gb_on = true;
+	else if(*cmd == '0')
+		turn_gb_on = false;
+	else
+	{
+		printf("Syntax error\n");
+		return;
+	}
+
+	uint8_t tx[2];
+	tx[0] = IO_EXP_OUTPUT_PORT;
+	tx[1] = 0b11111110 | turn_gb_on;
+	i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
+			   sizeof(tx), false);
+
+	return;
+}
+
 void func_reboot(const char *cmd)
 {
 	(void) cmd;
@@ -400,7 +548,10 @@ int main(void)
 {
 	char buf[64];
 
-	set_sys_clock_48mhz();
+	/* Reduce power consumption to stop IO Expander Power-On Reset Errata. */
+	sleep_ms(10);
+
+	//set_sys_clock_48mhz();
 
 	i2c_init(i2c_default, 400 * 1000);
 	gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
@@ -411,12 +562,43 @@ int main(void)
 	bi_decl(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN,
 		PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
 
+	/* Set external RTC configuration. */
 	{
 		uint8_t tx[2];
 		tx[0] = RTC_CONTROL;
 		tx[1] = 0b00111100;
 		i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR, tx,
 			sizeof(tx), false);
+	}
+
+	/* Set external IO expander configuration. */
+	{
+		uint8_t tx[2];
+		tx[0] = IO_EXP_DIRECTION;
+		tx[1] = 0b11111110;
+		i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
+				   sizeof(tx), false);
+	}
+
+	/* Initialise Game Boy data communication. */
+	{
+		gb_bus_program_init(pio0, PIO_SM_A15, PIO_SM_DO);
+
+		/* Enable IRQ0 to trigger when data in RX FIFO. */
+#if 0
+		pio_set_irq0_source_mask_enabled(pio0,
+						 PIO_INTR_SM0_RXNEMPTY_LSB |
+						 PIO_INTR_SM1_RXNEMPTY_LSB |
+						 PIO_INTR_SM2_RXNEMPTY_LSB,
+						 true);
+		irq_set_exclusive_handler(PIO0_IRQ_0, pio0_irq0);
+		irq_set_enabled(PIO0_IRQ_0, true);
+#endif
+
+		gpio_set_dir(PIO_DIR, true);
+		/* Enable state machines. */
+		pio_sm_set_enabled(pio0, PIO_SM_A15, true);
+		pio_sm_set_enabled(pio0, PIO_SM_DO,  true);
 	}
 
 	/* If baudrate is set to PICO_STDIO_USB_RESET_MAGIC_BAUD_RATE, then the
