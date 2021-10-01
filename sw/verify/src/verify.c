@@ -37,22 +37,20 @@ void func_date(const char *cmd);
 void func_reboot(const char *cmd);
 
 static const struct func_map map[] = {
-	{ "HELP",	"Print usage information",		func_help    },
-	{ "I2C SCAN",	"Perform I2C bus scan",			func_i2cscan },
-	{ "I2C SEND",	"Send bytes 0xDD to address 0xAA on I2C bus 'I2C SEND "
-		      	"0xAA 0xDD [0xDD ...]'",		func_i2csend },
-	{ "I2C RECV",	"Receive a byte from address 0xAA on I2C bus 'I2C "
-			"RECV 0xAA'",				func_i2crecv },
-	{ "RTC TEMP",	"Read temperature from RTC",		func_rtctemp },
+	{ "HELP",	"Print usage information",		func_help	},
+	{ "I2C SCAN",	"Perform I2C bus scan",			func_i2cscan	},
+	{ "I2C SEND",	"Send bytes 0xDD to address 0xAA on I2C bus\n"
+			     "\t'I2C SEND 0xAA 0xDD [0xDD ...]'", func_i2csend	},
+	{ "I2C RECV",	"Receive a byte from address 0xAA on I2C bus\n"
+			     "\t'I2C RECV 0xAA'",		func_i2crecv	},
+	{ "RTC TEMP",	"Read temperature from RTC",		func_rtctemp	},
 	{ "RTC READ",	"Read date and time from RTC and set internal RTC",
-		func_rtcread },
-	{ "RTC WRITE",	"Write date and time to internal RTC and set external"
-			      " RTC \n"
-			      "\t'RTC WRITE <DOTW>:<DAY>/<MONTH>/<YEAR> "
-			      "<HOUR>:<MIN>:<SEC>'",
-			      func_rtcwrite },
-	{ "DATE",	"Read date and time from internal RTC", func_date },
-	{ "REBOOT",	"Reboot to USBBOOT",			func_reboot  }
+								func_rtcread	},
+	{ "RTC WRITE",	"Write date and time to internal RTC and set external RTC \n"
+			"\t'RTC WRITE <DOTW>:<DAY>/<MONTH>/<YEAR> <HOUR>:<MIN>:<SEC>'",
+			      					func_rtcwrite	},
+	{ "DATE",	"Read date and time from internal RTC",	func_date	},
+	{ "REBOOT",	"Reboot to USBBOOT",			func_reboot 	}
 };
 
 typedef enum {
@@ -433,7 +431,12 @@ new_cmd:
 	{
 		buf[i] = getchar();
 		putchar(buf[i]);
-		if(buf[i] == '\r')
+		if(buf[i] == '\b')
+		{
+			i--;
+			continue;
+		}
+		else if(buf[i] == '\r')
 		{
 			buf[i] = '\0';
 			break;
