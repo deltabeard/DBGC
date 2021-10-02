@@ -105,8 +105,14 @@ typedef enum {
 void func_pio(const char *cmd)
 {
 	unsigned times = 1;
+
+	/* Power cycle GB. */
+	func_gb("GB 1");
+	sleep_ms(10);
 	func_gb("GB 0");
+
 	pio_sm_clear_fifos(pio0, PIO_SM_A15);
+	pio_sm_clear_fifos(pio0, PIO_SM_DO);
 
 	while (getchar_timeout_us(0) == PICO_ERROR_TIMEOUT)
 	{
@@ -122,7 +128,7 @@ void func_pio(const char *cmd)
 
 			address = pio_sm_get(pio0, PIO_SM_A15);
 			address >>= 16;
-			pio_sm_put(pio0, PIO_SM_DO, 0x00);
+			pio_sm_put(pio0, PIO_SM_DO, 0b01010101);
 			printf("0x%04X\t", address);
 
 			if(times % 8 == 0)
@@ -158,42 +164,28 @@ void func_bus(const char *cmd)
 		 */
 		if (pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15) == false)
 		{
+			static unsigned one_time = 0;
 			unsigned address;
-
-			printf("0x%04X\t%hhu\t%hhu\t%hhu\t%hhu\t%hhu\n",
-			       address,
-			       gpio_get(PIO_PHI), gpio_get(PIO_NRD),
-			       gpio_get(PIO_NCS),
-			       pio_sm_get_pc(pio0, PIO_SM_DO),
-			       pio_sm_get_pc(pio0, PIO_SM_DO));
 
 			address = pio_sm_get(pio0, PIO_SM_A15);
 			address >>= 16;
-			printf("0x%04X\t%hhu\t%hhu\t%hhu\t%hhu\t%hhu\n",
-			       address,
-			       gpio_get(PIO_PHI), gpio_get(PIO_NRD),
-			       gpio_get(PIO_NCS),
-			       pio_sm_get_pc(pio0, PIO_SM_DO),
-			       pio_sm_get_pc(pio0, PIO_SM_DO));
 
 			pio_sm_put(pio0, PIO_SM_DO, 0x0F);
-			printf("0x%04X\t%hhu\t%hhu\t%hhu\t%hhu\t%hhu\n",
-			       address,
-			       gpio_get(PIO_PHI), gpio_get(PIO_NRD),
-			       gpio_get(PIO_NCS),
-			       pio_sm_get_pc(pio0, PIO_SM_DO),
-			       pio_sm_get_pc(pio0, PIO_SM_DO));
 
-			do
+			while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15) == true)
 			{
+				if(one_time == 1)
+					break;
+
 				printf("0x%04X\t%hhu\t%hhu\t%hhu\t%hhu\t%hhu\n",
 				       address,
 				       gpio_get(PIO_PHI), gpio_get(PIO_NRD),
 				       gpio_get(PIO_NCS),
 				       pio_sm_get_pc(pio0, PIO_SM_DO),
 				       pio_sm_get_pc(pio0, PIO_SM_DO));
+
+				one_time = 1;
 			}
-			while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15) == true);
 		}
 	}
 

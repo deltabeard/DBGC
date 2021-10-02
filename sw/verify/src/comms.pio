@@ -38,7 +38,7 @@ public gb_bus_write:
 	pull ifempty block  side 0
 
 ;	Output data from OSR to data pins
-	out PINS,8          side 0
+	out PINS, 8         side 0
 
 ;	Set Data pins to OUTPUT.
 ;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
@@ -73,7 +73,7 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_do)
 {
 	pio_sm_config sm_config_a15, sm_config_do;
 	uint gb_bus_read_off, gb_bus_write_off;
-	const float div = 1.0f;
+	const float div = 4.0f;
 
 	gb_bus_read_off = pio_add_program(pio, &gb_bus_read_program);
 	gb_bus_write_off = pio_add_program(pio, &gb_bus_write_program);
