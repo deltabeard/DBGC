@@ -10,6 +10,7 @@
 #include <hardware/i2c.h>
 #include <hardware/clocks.h>
 #include <hardware/rtc.h>
+#include <hardware/vreg.h>
 #include <string.h>
 #include <stdlib.h>
 #include <pico/util/datetime.h>
@@ -41,7 +42,6 @@ void func_rtcwrite(const char *cmd);
 void func_gb(const char *cmd);
 
 void func_pio(const char *cmd);
-void func_bus(const char *cmd);
 void func_date(const char *cmd);
 void func_reboot(const char *cmd);
 
@@ -62,7 +62,6 @@ static const struct func_map map[] = {
 			       "\t'GB 1'",			func_gb		},
 	{ "DATE",	"Read date and time from internal RTC",	func_date	},
 	{ "PIO",	"Display state of PIO",			func_pio	},
-	{ "BUS",	"Display PIO/GB bus",			func_bus	},
 	{ "REBOOT",	"Reboot to USBBOOT",			func_reboot 	}
 };
 
@@ -102,94 +101,72 @@ typedef enum {
 #include <hardware/irq.h>
 #include "comms.pio.h"
 
-void func_pio(const char *cmd)
+#include <gb_manager.gb.h>
+
+void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 {
-	unsigned times = 1;
+	uint16_t addr_stor[512];
+	uint8_t data_stor[512];
+	unsigned stor = 1;
+
+	/* Initialise Game Boy data communication. */
+	unsigned sm_a15, sm_do;
+
+	func_gb("GB 1");
+
+	/* This will panic if sm is not available. */
+	sm_a15 = pio_claim_unused_sm(pio0, true);
+	sm_do = pio_claim_unused_sm(pio0, true);
+	gb_bus_program_init(pio0, sm_a15, sm_do);
+
+	/* Enable state machines. */
+	pio_sm_set_enabled(pio0, sm_a15, true);
+	pio_sm_set_enabled(pio0, sm_do,  true);
 
 	/* Power cycle GB. */
 	func_gb("GB 1");
-	sleep_ms(10);
+	sleep_ms(100);
 	func_gb("GB 0");
 
-	pio_sm_clear_fifos(pio0, PIO_SM_A15);
-	pio_sm_clear_fifos(pio0, PIO_SM_DO);
-
-	while (getchar_timeout_us(0) == PICO_ERROR_TIMEOUT)
+	while (1)
 	{
 		/**
-		 * PIO_SM_A15 state machine RX value:
-		 * | 8-bit Data | 16-bit Address | CS | RD | PHI | 00000 |
-		 * | Unused     | Readable       | U  | R  | U   | UUUUU |
-		 * Legend: U-Unused, R-Readable
+		 * sm_a15 state machine RX value:
+		 * | 16-bit Address | 0x0000 |
 		 */
-		if (pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15) == false)
-		{
-			unsigned address;
+		uint32_t address;
+		uint8_t data;
+		address = pio_sm_get_blocking(pio0, sm_a15);
+		if(address == 0)
+			break;
 
-			address = pio_sm_get(pio0, PIO_SM_A15);
-			address >>= 16;
-			pio_sm_put(pio0, PIO_SM_DO, 0b01010101);
-			printf("0x%04X\t", address);
+		address >>= 16;
+		data = gb_manager_rom[address];
+		pio_sm_put(pio0, sm_do, data);
 
-			if(times % 8 == 0)
-				puts("");
+		if(stor == data_stor)
+			continue;
 
-			times++;
-		}
+		addr_stor[stor] = address;
+		data_stor[stor] = data;
+		stor++;
 	}
 
 	printf("Exiting PIO printing\n");
-	return;
-}
 
-void func_bus(const char *cmd)
-{
-	/* Power cycle GB. */
-	func_gb("GB 1");
-	sleep_ms(10);
-	func_gb("GB 0");
-
-	pio_sm_clear_fifos(pio0, PIO_SM_A15);
-	pio_sm_clear_fifos(pio0, PIO_SM_DO);
-
-	puts("ADDR\tPIO\t~RD\t~CS\tA15-PC\tDO-PC");
-
-	while (getchar_timeout_us(0) == PICO_ERROR_TIMEOUT)
+	for(unsigned i = 1; i < stor; i++)
 	{
-		/**
-		 * PIO_SM_A15 state machine RX value:
-		 * | 8-bit Data | 16-bit Address | CS | RD | PHI | 00000 |
-		 * | Unused     | Readable       | U  | R  | U   | UUUUU |
-		 * Legend: U-Unused, R-Readable
-		 */
-		if (pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15) == false)
-		{
-			static unsigned one_time = 0;
-			unsigned address;
-
-			address = pio_sm_get(pio0, PIO_SM_A15);
-			address >>= 16;
-
-			pio_sm_put(pio0, PIO_SM_DO, 0x0F);
-
-			while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15) == true)
-			{
-				if(one_time == 1)
-					break;
-
-				printf("0x%04X\t%hhu\t%hhu\t%hhu\t%hhu\t%hhu\n",
-				       address,
-				       gpio_get(PIO_PHI), gpio_get(PIO_NRD),
-				       gpio_get(PIO_NCS),
-				       pio_sm_get_pc(pio0, PIO_SM_DO),
-				       pio_sm_get_pc(pio0, PIO_SM_DO));
-
-				one_time = 1;
-			}
-		}
+		printf("%04X-%02X ", addr_stor[i], data_stor[i]);
+		if(i % 16 == 0)
+			puts("");
 	}
+	puts("");
 
-	printf("Exiting PIO printing\n");
+	pio_sm_set_enabled(pio0, sm_a15, false);
+	pio_sm_set_enabled(pio0, sm_do,  false);
+	pio_sm_unclaim(pio0, sm_a15);
+	pio_sm_unclaim(pio0, sm_do);
+
 	return;
 }
 
@@ -303,6 +280,13 @@ void func_rtcread(const char *cmd)
 	if(rtc_set_datetime(&dt) == false)
 	{
 		printf("Datetime is not valid\n");
+		for(unsigned i = 0; i < sizeof(rx); i++)
+			printf("%02x ", rx[i]);
+
+		printf("\n"
+		       "%d %d %d %d %d %d %d\n",
+			dt.sec, dt.min, dt.hour, dt.dotw, dt.day, dt.month,
+			dt.year);
 		return;
 	}
 
@@ -554,6 +538,15 @@ int main(void)
 	bi_decl(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN,
 		PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
 
+	for(unsigned i = PIO_PHI; i <= PIO_DIR; i++)
+	{
+		/* Use fast slew rate for GB Bus. */
+		gpio_set_slew_rate(i, GPIO_SLEW_RATE_FAST);
+		/* Disable schmitt triggers on GB Bus. The bus transceivers
+		 * already have schmitt triggers. */
+		gpio_set_input_hysteresis_enabled(i, false);
+	}
+
 	/* Set external RTC configuration. */
 	{
 		uint8_t tx[2];
@@ -572,26 +565,12 @@ int main(void)
 				   sizeof(tx), false);
 	}
 
-	/* Initialise Game Boy data communication. */
-	{
-		gb_bus_program_init(pio0, PIO_SM_A15, PIO_SM_DO);
+	//gpio_set_drive_strength(PIO_DIR, GPIO_DRIVE_STRENGTH_12MA);
+	//gpio_set_function(PIO_DIR, GPIO_FUNC_PIO0);
+	//gpio_set_dir(PIO_DIR, true);
+	//gpio_put(PIO_DIR, 1);
 
-		/* Enable IRQ0 to trigger when data in RX FIFO. */
-#if 0
-		pio_set_irq0_source_mask_enabled(pio0,
-						 PIO_INTR_SM0_RXNEMPTY_LSB |
-						 PIO_INTR_SM1_RXNEMPTY_LSB |
-						 PIO_INTR_SM2_RXNEMPTY_LSB,
-						 true);
-		irq_set_exclusive_handler(PIO0_IRQ_0, pio0_irq0);
-		irq_set_enabled(PIO0_IRQ_0, true);
-#endif
-
-		gpio_set_dir(PIO_DIR, true);
-		/* Enable state machines. */
-		pio_sm_set_enabled(pio0, PIO_SM_A15, true);
-		pio_sm_set_enabled(pio0, PIO_SM_DO,  true);
-	}
+	func_gb("GB 1");
 
 	/* If baudrate is set to PICO_STDIO_USB_RESET_MAGIC_BAUD_RATE, then the
 	 * RP2040 will reset to BOOTSEL mode. */

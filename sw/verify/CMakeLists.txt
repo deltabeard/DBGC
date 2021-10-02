@@ -31,10 +31,11 @@ pico_generate_pio_header(dbgc_verify
         ${CMAKE_CURRENT_LIST_DIR}/src/comms.pio)
 target_compile_definitions(dbgc_verify PRIVATE
         PICO_STDIO_ENABLE_CRLF_SUPPORT=0
-        PICO_STDIO_DEFAULT_CRLF=0)
+        PICO_STDIO_DEFAULT_CRLF=0
+        PICO_FLASH_SPI_CLKDIV=4)
 target_link_libraries(dbgc_verify
         pico_stdlib pico_stdio pico_bootrom pico_multicore
-        hardware_clocks hardware_i2c hardware_rtc hardware_pio
+        hardware_clocks hardware_i2c hardware_rtc hardware_pio hardware_vreg
         pico_binary_info)
 pico_enable_stdio_usb(dbgc_verify 1)
 pico_enable_stdio_uart(dbgc_verify 0)

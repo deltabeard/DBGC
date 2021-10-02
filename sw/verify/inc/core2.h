@@ -18,6 +18,4 @@
 #define NUM_TOTAL_PINS   (NUM_ADDRESS_PINS + NUM_DATA_PINS + NUM_MISC_PINS)
 
 #define PIO_SM_A15	0
-#define PIO_SM_CS	1
-#define PIO_SM_DI	2
-#define PIO_SM_DO	3
+#define PIO_SM_DO	1

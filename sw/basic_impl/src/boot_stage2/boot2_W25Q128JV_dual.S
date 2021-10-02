@@ -3,18 +3,15 @@
 // Copyright (c) 2019-2021 Raspberry Pi (Trading) Ltd.
 // SPDX-License-Identifier: BSD-3-Clause
 //
-// Device:      Winbond W25Q080
-//              Also supports W25Q16JV (which has some different SR instructions)
-//              Also supports AT25SF081
-//              Also supports S25FL132K0
+// Device:      Winbond W25Q128JV
 //
-// Description: Configures W25Q080 to run in Quad I/O continuous read XIP mode
+// Description: Configures W25Q128JV to run in Dual I/O continuous read XIP mode
 //
 // Details:     * Check status register 2 to determine if QSPI mode is enabled,
 //                and perform an SR2 programming cycle if necessary.
-//              * Use SSI to perform a dummy 0xEB read command, with the mode
+//              * Use SSI to perform a dummy 0xBB read command, with the mode
 //                continuation bits set, so that the flash will not require
-//                0xEB instruction prefix on subsequent reads.
+//                0xBB instruction prefix on subsequent reads.
 //              * Configure SSI to write address, mode bits, but no instruction.
 //                SSI + flash are now jointly in a state where continuous reads
 //                can take place.
@@ -51,22 +48,22 @@
 // Define interface width: single/dual/quad IO
 #define FRAME_FORMAT SSI_CTRLR0_SPI_FRF_VALUE_DUAL
 
-// For W25Q080 this is the "Read data fast quad IO" instruction:
-#define CMD_READ 0xeb
+// For W25Q128JV this is the "Read data fast dual IO" instruction:
+#define CMD_READ 0xbb
 
 // "Mode bits" are 8 special bits sent immediately after
-// the address bits in a "Read Data Fast Quad I/O" command sequence. 
-// On W25Q080, the four LSBs are don't care, and if MSBs == 0xa, the
-// next read does not require the 0xeb instruction prefix.
-#define MODE_CONTINUOUS_READ 0xa0
+// the address bits in a "Read Data Fast Dual I/O" command sequence.
+// On W25Q128JV, the four LSBs are don't care, and if MSBs == 0xf, the
+// next read does not require the 0xbb instruction prefix.
+#define MODE_CONTINUOUS_READ 0xf0
 
 // The number of address + mode bits, divided by 4 (always 4, not function of
-// interface width).
+// interface width). Therefore: 32/4 = 8.
 #define ADDR_L 8
 
-// How many clocks of Hi-Z following the mode bits. For W25Q080, 4 dummy cycles
-// are required.
-#define WAIT_CYCLES 4
+// How many clocks of Hi-Z following the mode bits.
+// No dummy clocks required in Dual I/O mode.
+#define WAIT_CYCLES 0
 
 // If defined, we will read status reg, compare to SREG_DATA, and overwrite
 // with our value if the SR doesn't match.
@@ -204,7 +201,7 @@ skip_sreg_programming:
 
 dummy_read:
 #define CTRLR0_ENTER_XIP \
-    (FRAME_FORMAT                          /* Quad I/O mode */                \
+    (FRAME_FORMAT                          /* Dual I/O mode */                \
         << SSI_CTRLR0_SPI_FRF_LSB) |                                          \
     (31 << SSI_CTRLR0_DFS_32_LSB)  |       /* 32 data bits */                 \
     (SSI_CTRLR0_TMOD_VALUE_EEPROM_READ     /* Send INST/ADDR, Receive Data */ \
