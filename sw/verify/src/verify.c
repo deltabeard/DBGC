@@ -144,7 +144,7 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 		data = gb_manager_rom[address];
 		pio_sm_put(pio0, sm_do, data);
 
-		if(stor == data_stor)
+		if(stor == sizeof(data_stor))
 			continue;
 
 		addr_stor[stor] = address;
