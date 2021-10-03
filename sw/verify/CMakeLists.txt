@@ -32,7 +32,8 @@ pico_generate_pio_header(dbgc_verify
 target_compile_definitions(dbgc_verify PRIVATE
         PICO_STDIO_ENABLE_CRLF_SUPPORT=0
         PICO_STDIO_DEFAULT_CRLF=0
-        PICO_FLASH_SPI_CLKDIV=4)
+        PICO_FLASH_SPI_CLKDIV=4
+        PARAM_ASSERTIONS_DISABLE_ALL=1)
 target_link_libraries(dbgc_verify
         pico_stdlib pico_stdio pico_bootrom pico_multicore
         hardware_clocks hardware_i2c hardware_rtc hardware_pio hardware_vreg

@@ -35,14 +35,13 @@ gb_bus_read_start:
 public gb_bus_write:
 ;	Pull data from TX FIFO to OSR
 ;	This is not required if autopull is enabled
-	pull ifempty block  side 1
+	pull ifempty block  side 0
 
 ;	Output data from OSR to data pins
 	out PINS, 8         side 0
 
 ;	Keep data output active until new clock cycle.
-;	TODO: Maybe change this to HIGH EDGE IRQ on PHI?
-	wait 0 GPIO PHI     side 0	; Just in case we write really early.
+	wait 0 GPIO PHI     side 1	; Just in case we write really early.
 	wait 1 GPIO PHI     side 1
 
 ;	Wait for next data output

@@ -103,28 +103,18 @@ typedef enum {
 
 #include <gb_manager.gb.h>
 
+static unsigned sm_a15, sm_do;
+
 void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 {
-	uint16_t addr_stor[512];
-	uint8_t data_stor[512];
-	unsigned stor = 1;
-
 	/* Initialise Game Boy data communication. */
-	unsigned sm_a15, sm_do;
-
 	func_gb("GB 1");
-
-	/* This will panic if sm is not available. */
-	sm_a15 = pio_claim_unused_sm(pio0, true);
-	sm_do = pio_claim_unused_sm(pio0, true);
-	gb_bus_program_init(pio0, sm_a15, sm_do);
 
 	/* Enable state machines. */
 	pio_sm_set_enabled(pio0, sm_a15, true);
 	pio_sm_set_enabled(pio0, sm_do,  true);
 
 	/* Power cycle GB. */
-	func_gb("GB 1");
 	sleep_ms(100);
 	func_gb("GB 0");
 
@@ -136,6 +126,7 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 		 */
 		uint32_t address;
 		uint8_t data;
+
 		address = pio_sm_get_blocking(pio0, sm_a15);
 		if(address == 0)
 			break;
@@ -143,29 +134,12 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 		address >>= 16;
 		data = gb_manager_rom[address];
 		pio_sm_put(pio0, sm_do, data);
-
-		if(stor == sizeof(data_stor))
-			continue;
-
-		addr_stor[stor] = address;
-		data_stor[stor] = data;
-		stor++;
 	}
 
 	printf("Exiting PIO printing\n");
 
-	for(unsigned i = 1; i < stor; i++)
-	{
-		printf("%04X-%02X ", addr_stor[i], data_stor[i]);
-		if(i % 16 == 0)
-			puts("");
-	}
-	puts("");
-
 	pio_sm_set_enabled(pio0, sm_a15, false);
 	pio_sm_set_enabled(pio0, sm_do,  false);
-	pio_sm_unclaim(pio0, sm_a15);
-	pio_sm_unclaim(pio0, sm_do);
 
 	return;
 }
@@ -571,6 +545,10 @@ int main(void)
 	//gpio_put(PIO_DIR, 1);
 
 	func_gb("GB 1");
+	/* This will panic if sm is not available. */
+	sm_a15 = pio_claim_unused_sm(pio0, true);
+	sm_do = pio_claim_unused_sm(pio0, true);
+	gb_bus_program_init(pio0, sm_a15, sm_do);
 
 	/* If baudrate is set to PICO_STDIO_USB_RESET_MAGIC_BAUD_RATE, then the
 	 * RP2040 will reset to BOOTSEL mode. */
