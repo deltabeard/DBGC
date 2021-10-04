@@ -26,7 +26,7 @@ set(CMAKE_C_FLAGS_MINSIZEREL "-g2 -Os -Wall -Wextra -DNDEBUG")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g2 -Ofast -Wall -Wextra")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELWITHDEBINFO} -DNDEBUG")
 
-add_executable(dbgc_verify src/verify.c inc/core2.h)
+add_executable(dbgc_verify src/verify.c)
 target_include_directories(dbgc_verify PRIVATE inc)
 pico_generate_pio_header(dbgc_verify ${CMAKE_SOURCE_DIR}/src/comms.pio)
 target_compile_definitions(dbgc_verify PRIVATE

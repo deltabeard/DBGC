@@ -69,8 +69,7 @@ public gb_bus_write_data:
 
 
 % c-sdk {
-#include <hardware/clocks.h>
-#include <core2.h>
+#include <verify.h>
 
 void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_do)
 {

@@ -10,12 +10,10 @@
 #include <hardware/i2c.h>
 #include <hardware/clocks.h>
 #include <hardware/rtc.h>
-#include <hardware/vreg.h>
 #include <string.h>
 #include <stdlib.h>
 #include <pico/util/datetime.h>
-#include <core2.h>
-#include <pico/multicore.h>
+#include <verify.h>
 
 #define ARRAYSIZE(array)	(sizeof(array)/sizeof(array[0]))
 #define CLR_SCRN		"\033[2J"
@@ -96,9 +94,7 @@ typedef enum {
 	IO_EXP_DIRECTION
 } io_exp_reg;
 
-#include <core2.h>
 #include <hardware/pio.h>
-#include <hardware/irq.h>
 #include "comms.pio.h"
 
 #include <gb_manager.gb.h>
