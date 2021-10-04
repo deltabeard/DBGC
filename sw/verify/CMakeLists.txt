@@ -15,6 +15,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(ENV{PICO_BOARD_HEADER_DIRS} ${CMAKE_SOURCE_DIR}/inc/board)
+set(ENV{PICO_DEFAULT_BOOT_STAGE2_FILE} ${CMAKE_SOURCE_DIR}/inc/board/boot2_W25Q128JV_dual.S)
 set(PICO_BOARD deltabeard_dbgc)
 
 # Initialize the Raspberry Pi Pico SDK
@@ -27,8 +28,7 @@ set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELWITHDEBINFO} -DNDEBUG")
 
 add_executable(dbgc_verify src/verify.c inc/core2.h)
 target_include_directories(dbgc_verify PRIVATE inc)
-pico_generate_pio_header(dbgc_verify
-        ${CMAKE_CURRENT_LIST_DIR}/src/comms.pio)
+pico_generate_pio_header(dbgc_verify ${CMAKE_SOURCE_DIR}/src/comms.pio)
 target_compile_definitions(dbgc_verify PRIVATE
         PICO_STDIO_ENABLE_CRLF_SUPPORT=0
         PICO_STDIO_DEFAULT_CRLF=0
