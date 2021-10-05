@@ -5,7 +5,7 @@ include(pico_sdk_import.cmake)
 
 project(dbgc_impl
         VERSION 0.1.0.0
-        DESCRIPTION "DBGC Verification Tool"
+        DESCRIPTION "DBGC PIO Implementation"
         HOMEPAGE_URL "https://github.com/deltabeard/DBGC"
         LANGUAGES C CXX ASM)
 
@@ -15,8 +15,6 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(ENV{PICO_BOARD_HEADER_DIRS} ${CMAKE_SOURCE_DIR}/inc/board)
-set(ENV{PICO_DEFAULT_BOOT_STAGE2_FILE}
-        ${CMAKE_SOURCE_DIR}/src/boot_stage2/boot2_w25q080_dual.S)
 set(PICO_BOARD deltabeard_dbgc)
 
 # Initialize the Raspberry Pi Pico SDK
@@ -27,16 +25,19 @@ set(CMAKE_C_FLAGS_MINSIZEREL "-g2 -Os -Wall -Wextra -DNDEBUG")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g2 -Ofast -Wall -Wextra")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELWITHDEBINFO} -DNDEBUG")
 
-add_executable(dbgc_impl src/verify.c inc/core2.h)
+add_executable(dbgc_impl src/impl.c)
 target_include_directories(dbgc_impl PRIVATE inc)
+pico_generate_pio_header(dbgc_impl ${CMAKE_SOURCE_DIR}/src/comms.pio)
 target_compile_definitions(dbgc_impl PRIVATE
         PICO_STDIO_ENABLE_CRLF_SUPPORT=0
-        PICO_STDIO_DEFAULT_CRLF=0)
+        PICO_STDIO_DEFAULT_CRLF=0
+        PARAM_ASSERTIONS_DISABLE_ALL=1)
 target_link_libraries(dbgc_impl
-        pico_stdlib pico_stdio pico_bootrom pico_multicore
-        hardware_clocks hardware_i2c hardware_rtc
+        pico_stdlib pico_bootrom
+        hardware_clocks hardware_i2c hardware_pio
         pico_binary_info)
-pico_enable_stdio_usb(dbgc_impl 1)
+
+pico_enable_stdio_usb(dbgc_impl 0)
 pico_enable_stdio_uart(dbgc_impl 0)
 
 # create map/bin/hex/uf2 file in addition to ELF.
