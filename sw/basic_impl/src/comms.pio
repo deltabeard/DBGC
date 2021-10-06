@@ -6,8 +6,7 @@
 .define A15         20
 .define NUM_DATA_PINS 8
 
-.define IRQ_NEW_INSTR   6
-.define IRQ_END_INSTR   7
+.define IRQ_NEW_INSTR   7
 
 .program gb_bus_clk
 ;   Wait for HIGH edge of PHI.  __/‾‾
@@ -133,6 +132,7 @@ void gb_bus_program_init(PIO pio,
 	sm_config_set_sideset_pins(&sm_config_do, PIO_DIR);
 
 	/* Initialise all state machines. */
+	pio_sm_init(pio, sm_clk, gb_bus_clk_off,  &sm_config_clk);
 	pio_sm_init(pio, sm_a15, gb_bus_get_address_off,  &sm_config_a15);
 	pio_sm_init(pio, sm_do,  gb_bus_write_data_off, &sm_config_do);
 }

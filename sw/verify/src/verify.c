@@ -499,7 +499,7 @@ int main(void)
 
 	//set_sys_clock_48mhz();
 
-	i2c_init(i2c_default, 400 * 1000);
+	i2c_init(i2c_default, 100 * 1000);
 	gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
 	gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
 	gpio_disable_pulls(PICO_DEFAULT_I2C_SDA_PIN);
@@ -547,6 +547,7 @@ int main(void)
 	//gpio_put(PIO_DIR, 1);
 
 	func_gb("GB 1");
+
 	/* This will panic if sm is not available. */
 	sm_a15 = pio_claim_unused_sm(pio0, true);
 	sm_do = pio_claim_unused_sm(pio0, true);

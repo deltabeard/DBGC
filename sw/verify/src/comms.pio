@@ -13,6 +13,10 @@ gb_bus_get_address_start:
 ;	Wait for a new clock cycle, and hence for a new read/write instruction.
 	wait 1 GPIO PHI
 
+;   Clear IRQ. Lets other state machines know that the Game Boy is going to
+;   request new data.
+    irq clear IRQ_END_INSTR
+
 ;   Only continue if A15 is low. If A15 is high, then either the address is not
 ;   ready, or this is not a ROM address.
 	jmp PIN gb_bus_get_address_start
@@ -27,9 +31,6 @@ gb_bus_get_address_start:
 ;	Wait for next instruction
     wait 0 GPIO PHI
 
-;   Clear IRQ. Lets other state machines know that the Game Boy is going to
-;   request new data.
-    irq clear IRQ_END_INSTR
 .wrap
 
 ; Send data to the Game Boy. This is done when the Game Boy is performing a read

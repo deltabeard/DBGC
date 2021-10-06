@@ -32,8 +32,7 @@ target_compile_definitions(dbgc_impl PRIVATE
         PICO_STDIO_ENABLE_CRLF_SUPPORT=0
         PICO_STDIO_DEFAULT_CRLF=0
         PARAM_ASSERTIONS_DISABLE_ALL=1
-        CFG_TUSB_DEBUG=0
-        PICO_FLASH_SPI_CLKDIV=4)
+        CFG_TUSB_DEBUG=0)
 target_link_libraries(dbgc_impl
         pico_stdlib pico_stdio pico_bootrom
         hardware_clocks hardware_vreg hardware_i2c hardware_pio

@@ -8,7 +8,6 @@
 
 #include "comms.pio.h"
 #include <configuration.h>
-#include <gb_manager.gb.h>
 
 #define I2C_PCA9536_ADDR 0b01000001
 #define I2C_DS3231M_ADDR 0b01101000
@@ -27,14 +26,21 @@ typedef enum {
 
 void func_gb(gb_pwr_e pwr);
 
-void __no_inline_not_in_flash_func(func_pio)(unsigned sm_a15, unsigned sm_do)
+void __no_inline_not_in_flash_func(func_pio)(unsigned sm_clk,
+	unsigned sm_a15,
+	unsigned sm_do)
 {
+#include <gb_manager.gb.h>
+
 	/* Turn off Game Boy. */
 	func_gb(GB_POWER_OFF);
 
 	/* Enable state machines. */
+	pio_sm_set_enabled(pio0, sm_clk, true);
 	pio_sm_set_enabled(pio0, sm_a15, true);
 	pio_sm_set_enabled(pio0, sm_do,  true);
+
+	printf("GB Power on\n");
 
 	/* Power cycle GB. */
 	sleep_ms(100);
@@ -58,6 +64,7 @@ void __no_inline_not_in_flash_func(func_pio)(unsigned sm_a15, unsigned sm_do)
 		pio_sm_put(pio0, sm_do, data);
 	}
 
+	pio_sm_set_enabled(pio0, sm_clk, false);
 	pio_sm_set_enabled(pio0, sm_a15, false);
 	pio_sm_set_enabled(pio0, sm_do,  false);
 
@@ -87,22 +94,26 @@ int main(void)
 	//set_sys_clock_48mhz();
 	stdio_usb_init();
 
+	printf("Starting\n");
 	while((c = getchar_timeout_us(0)) == PICO_ERROR_TIMEOUT)
 	{
 		printf("Press a key to start\n");
 		sleep_ms(500);
 	}
 
+	printf("\n");
+
 	if(c == 'r')
 		goto out;
 
-	vreg_set_voltage(VREG_VOLTAGE_1_20);
-	sleep_ms(1);
-	set_sys_clock_khz(320000, false);
-	sleep_ms(1);
+	//vreg_set_voltage(VREG_VOLTAGE_1_20);
+	sleep_ms(100);
+	//set_sys_clock_khz(250000, false);
+	sleep_ms(100);
 
+	printf("Running program\n");
 	/* Initialise I2C. */
-	i2c_init(i2c_default, 400 * 1000);
+	i2c_init(i2c_default, 100 * 1000);
 	gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
 	gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
 	gpio_disable_pulls(PICO_DEFAULT_I2C_SDA_PIN);
@@ -119,6 +130,8 @@ int main(void)
 		i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
 				   sizeof(tx), false);
 	}
+
+	func_gb(GB_POWER_OFF);
 
 	for(unsigned i = PIO_PHI; i <= PIO_A15; i++)
 	{
@@ -145,7 +158,7 @@ int main(void)
 			goto out;
 
 		gb_bus_program_init(pio0, sm_clk, sm_a15, sm_do);
-		func_pio(sm_a15, sm_do);
+		func_pio(sm_clk, sm_a15, sm_do);
 	}
 
 out:
