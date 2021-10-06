@@ -1,12 +1,13 @@
-#include <pico/stdlib.h>
-#include <pico/binary_info.h>
-#include <stdlib.h>
-#include <configuration.h>
+#include <stdio.h>
 #include <hardware/i2c.h>
 #include <hardware/pio.h>
+#include <hardware/vreg.h>
+#include <pico/stdlib.h>
+#include <pico/binary_info.h>
 #include <pico/bootrom.h>
 
 #include "comms.pio.h"
+#include <configuration.h>
 #include <gb_manager.gb.h>
 
 #define I2C_PCA9536_ADDR 0b01000001
@@ -78,10 +79,27 @@ void func_gb(gb_pwr_e pwr)
 
 int main(void)
 {
+	int c;
+
 	/* Reduce power consumption to stop IO Expander Power-On Reset Errata. */
 	sleep_ms(10);
 
 	//set_sys_clock_48mhz();
+	stdio_usb_init();
+
+	while((c = getchar_timeout_us(0)) == PICO_ERROR_TIMEOUT)
+	{
+		printf("Press a key to start\n");
+		sleep_ms(500);
+	}
+
+	if(c == 'r')
+		goto out;
+
+	vreg_set_voltage(VREG_VOLTAGE_1_20);
+	sleep_ms(1);
+	set_sys_clock_khz(320000, false);
+	sleep_ms(1);
 
 	/* Initialise I2C. */
 	i2c_init(i2c_default, 400 * 1000);

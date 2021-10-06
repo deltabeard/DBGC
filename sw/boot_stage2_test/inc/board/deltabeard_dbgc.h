@@ -32,8 +32,20 @@
 #endif
 
 // --- FLASH ---
-#define PICO_BOOT_STAGE2_CHOOSE_W25X10CL 1
+//#define PICO_BOOT_STAGE2_CHOOSE_GENERIC_03H 1
 
+// Voltage		Max Freq (MHz)		CLKDIV
+// VREG_VOLTAGE_1_25	416			4
+// VREG_VOLTAGE_1_20	381			4
+// VREG_VOLTAGE_1_05	273			4
+// VREG_VOLTAGE_1_05	136			2
+// VREG_VOLTAGE_1_00	131			2
+// VREG_VOLTAGE_0_95	125			2
+// VREG_VOLTAGE_0_90	118			2
+// VREG_VOLTAGE_0_85	FAIL
+
+// Flash is limited to ~70MHz. At the default frequency of 125MHz, CLKDIV of 2
+// will produce a clock of 62.5MHz.
 #ifndef PICO_FLASH_SPI_CLKDIV
 #define PICO_FLASH_SPI_CLKDIV 2
 #endif

@@ -504,9 +504,15 @@ int main(void)
 	gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
 	gpio_disable_pulls(PICO_DEFAULT_I2C_SDA_PIN);
 	gpio_disable_pulls(PICO_DEFAULT_I2C_SCL_PIN);
+	pio_sm_set_consecutive_pindirs;
 	// Make the I2C pins available to picotool
 	bi_decl(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN,
 		PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
+
+	for(unsigned i = PIO_PHI; i <= PIO_A15; i++)
+	{
+		gpio_set_input_enabled(i, true);
+	}
 
 	for(unsigned i = PIO_PHI; i <= PIO_DIR; i++)
 	{
