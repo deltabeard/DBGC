@@ -1,5 +1,4 @@
 #include <sys/timespec.h>
-#include <sys/cdefs.h>
 
 #define _GNU_SOURCE
 
@@ -98,11 +97,28 @@ typedef enum {
 #include "comms.pio.h"
 
 #include <gb_manager.gb.h>
+#include <hardware/vreg.h>
 
 static unsigned sm_a15, sm_do;
 
 void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 {
+	uint8_t *gb;
+
+	gb = malloc(gb_manager_rom_len);
+	if(gb == NULL)
+	{
+		printf("Malloc failed\n");
+		return;
+	}
+
+	memcpy(gb, gb_manager_rom, gb_manager_rom_len);
+
+	vreg_set_voltage(VREG_VOLTAGE_1_30);
+	sleep_ms(100);
+	set_sys_clock_khz(380000, true);
+	sleep_ms(100);
+
 	/* Initialise Game Boy data communication. */
 	func_gb("GB 1");
 
@@ -128,14 +144,17 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 			break;
 
 		address >>= 16;
-		data = gb_manager_rom[address];
+		data = gb[address];
 		pio_sm_put(pio0, sm_do, data);
 	}
 
 	printf("Exiting PIO printing\n");
+	free(gb);
 
 	pio_sm_set_enabled(pio0, sm_a15, false);
 	pio_sm_set_enabled(pio0, sm_do,  false);
+
+	func_gb("GB 1");
 
 	return;
 }
@@ -504,7 +523,7 @@ int main(void)
 	gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
 	gpio_disable_pulls(PICO_DEFAULT_I2C_SDA_PIN);
 	gpio_disable_pulls(PICO_DEFAULT_I2C_SCL_PIN);
-	pio_sm_set_consecutive_pindirs;
+
 	// Make the I2C pins available to picotool
 	bi_decl(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN,
 		PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
