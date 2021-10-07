@@ -38,7 +38,7 @@ gb_bus_get_address_start:
 .program gb_bus_write_data
 
 ; Side-set pin is DATA_DIR
-.side_set 1
+.side_set 1 opt
 
 public gb_bus_write_data:
 ;	Pull data from TX FIFO to OSR
@@ -47,23 +47,23 @@ public gb_bus_write_data:
 	pull ifempty block  side 0
 
 ;	Output data from OSR to data pins
-	out PINS, 8         side 0
+	out PINS, 8
 
 ;	Set Data pins to OUTPUT.
 ;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
-    mov osr, ~null	    side 0	; Set OSR to all ones
+    mov osr, ~null              ; Set OSR to all ones
 ;   Side: Take control of the data bus.
     out pindirs, 8	    side 1	; Output ones to data pindirs
 
 ;	Keep data output active until new clock cycle.
 ;   Side: Stay in control of the data bus.
-	irq wait IRQ_END_INSTR side 1
+	irq wait IRQ_END_INSTR
 
-;	Set Data pins to OUTPUT.
+;	Set Data pins to INPUT.
 ;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
 ;   Side: Give control of data bus to the Game Boy.
     mov osr, ~null	    side 0	; Set OSR to all ones
-    out pindirs, 8	    side 0	; Output ones to data pindirs
+    out pindirs, 8	          	; Output ones to data pindirs
 
 ;	Wait for next data output
 .wrap
@@ -118,7 +118,7 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_do)
 
 	/* Set "sideset" configuration to allow DATA_DIR to be changed on each
 	 * instruction for the sm_do state machine. */
-	sm_config_set_sideset(&sm_config_do, 1, false, false);
+	sm_config_set_sideset(&sm_config_do, 1, true, false);
 	sm_config_set_sideset_pins(&sm_config_do, PIO_DIR);
 
 	/* Initialise all state machines. */
