@@ -136,16 +136,20 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 		 * sm_a15 state machine RX value:
 		 * | 16-bit Address | 0x0000 |
 		 */
-		uint32_t address;
+		const io_rw_16 *rxf16 = (io_rw_16*)&pio0->rxf[sm_a15] + 1;
+		io_rw_8 *txf8 = (io_rw_8*)&pio0->txf[sm_do];
+		uint16_t address;
 		uint8_t data;
 
-		address = pio_sm_get_blocking(pio0, sm_a15);
-		if(address == 0)
-			break;
+		while(pio_sm_is_rx_fifo_empty(pio0, sm_a15))
+			tight_loop_contents();
 
-		address >>= 16;
+		address = *rxf16;
 		data = gb[address];
-		pio_sm_put(pio0, sm_do, data);
+		*txf8 = data;
+
+		//if(address == 0)
+		//	break;
 	}
 
 	printf("Exiting PIO printing\n");
@@ -517,6 +521,12 @@ int main(void)
 	sleep_ms(10);
 
 	//set_sys_clock_48mhz();
+
+	vreg_set_voltage(VREG_VOLTAGE_1_25);
+	sleep_ms(100);
+	set_sys_clock_khz(250000, true);
+	sleep_ms(100);
+
 
 	i2c_init(i2c_default, 100 * 1000);
 	gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);

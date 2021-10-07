@@ -28,6 +28,12 @@ gb_bus_get_address_start:
 ;	This is not required if autopush is enabled
 	push noblock
 
+;	Set Data pins to OUTPUT.
+;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
+    mov osr, ~null	          	; Set OSR to all ones
+;   Side: Take control of the data bus.
+    out pindirs, 8	          	; Output ones to data pindirs
+
 ;	Wait for next instruction
     wait 0 GPIO PHI
 
@@ -47,19 +53,13 @@ public gb_bus_write_data:
 	pull ifempty block  side 0
 
 ;	Output data from OSR to data pins
-	out PINS, 8         side 0
-
-;	Set Data pins to OUTPUT.
-;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
-    mov osr, ~null	    side 0	; Set OSR to all ones
-;   Side: Take control of the data bus.
-    out pindirs, 8	    side 1	; Output ones to data pindirs
+	out PINS, 8         side 1
 
 ;	Keep data output active until new clock cycle.
 ;   Side: Stay in control of the data bus.
 	irq wait IRQ_END_INSTR side 1
 
-;	Set Data pins to OUTPUT.
+;	Set Data pins to INPUT.
 ;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
 ;   Side: Give control of data bus to the Game Boy.
     mov osr, ~null	    side 0	; Set OSR to all ones
@@ -88,6 +88,7 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_do)
 	sm_config_set_in_pins(&sm_config_a15, PIO_A0);
 	/* Configure "OUT" pins to the data bus. */
     sm_config_set_out_pins(&sm_config_do, PIO_D0, NUM_DATA_PINS);
+    sm_config_set_out_pins(&sm_config_a15, PIO_D0, NUM_DATA_PINS);
 
     /* Configure "JMP" pins. */
     sm_config_set_jmp_pin(&sm_config_a15, PIO_A15);
