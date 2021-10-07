@@ -114,11 +114,6 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 
 	memcpy(gb, gb_manager_rom, gb_manager_rom_len);
 
-	vreg_set_voltage(VREG_VOLTAGE_1_30);
-	sleep_ms(100);
-	set_sys_clock_khz(380000, true);
-	sleep_ms(100);
-
 	/* Initialise Game Boy data communication. */
 	func_gb("GB 1");
 
