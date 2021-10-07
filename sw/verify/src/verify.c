@@ -23,10 +23,6 @@
 #define CURRENT_MILLENNIUM	21
 #define RTC_YEARS_EPOCH		((CURRENT_MILLENNIUM - 1) * 100)
 
-/* Optimisation Macros. */
-#define LIKELY(expr)   __builtin_expect(!!(expr), 1)
-#define UNLIKELY(expr) __builtin_expect(!!(expr), 0)
-
 struct func_map {
 	char *long_arg;
 	char *help;
@@ -118,12 +114,12 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 
 	memcpy(gb, gb_manager_rom, gb_manager_rom_len);
 
-	//vreg_set_voltage(VREG_VOLTAGE_1_30);
-	//sleep_ms(100);
-	//set_sys_clock_khz(380000, true);
-	//sleep_ms(100);
+	vreg_set_voltage(VREG_VOLTAGE_1_30);
+	sleep_ms(100);
+	set_sys_clock_khz(380000, true);
+	sleep_ms(100);
 
-	/* Turn off the Game Boy before starting. */
+	/* Initialise Game Boy data communication. */
 	func_gb("GB 1");
 
 	/* Enable state machines. */
@@ -137,30 +133,19 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 	while (1)
 	{
 		/**
-		 * Since the address uses the upper 16-bits of the FIFO, this
-		 * line points to the upper 16-bits and not the full 32-bits.
+		 * sm_a15 state machine RX value:
+		 * | 16-bit Address | 0x0000 |
 		 */
-		const io_rw_16 *rxf16 = (io_rw_16*)&pio0->rxf[sm_a15] + 1;
-		/* TODO: Check that this is the correct byte. */
-		io_rw_8 *txf8 = (io_rw_8*)&pio0->txf[sm_do];
-		uint16_t address;
+		uint32_t address;
 		uint8_t data;
 
-		/* Clear both FIFOs of any spurious data.
-		 * TODO: This may not be required. */
-		pio_sm_clear_fifos(pio0, sm_a15);
-
-		while (pio_sm_is_rx_fifo_empty(pio0, sm_a15))
-			tight_loop_contents();
-
-		address = *rxf16;
-		data = gb[address];
-		*txf8 = data;
-
-		if(UNLIKELY(address == 0))
+		address = pio_sm_get_blocking(pio0, sm_a15);
+		if(address == 0)
 			break;
-		/* Prefetch next address. */
-		//PREFETCH_RO(&gb[address + 1], 3);
+
+		address >>= 16;
+		data = gb[address];
+		pio_sm_put(pio0, sm_do, data);
 	}
 
 	printf("Exiting PIO printing\n");

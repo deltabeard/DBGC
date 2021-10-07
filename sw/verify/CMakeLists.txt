@@ -39,12 +39,5 @@ target_link_libraries(dbgc_verify
 pico_enable_stdio_usb(dbgc_verify 1)
 pico_enable_stdio_uart(dbgc_verify 0)
 
-function(pico_add_verbose_dis_output TARGET)
-    add_custom_command(TARGET ${TARGET} POST_BUILD
-            COMMAND ${CMAKE_OBJDUMP} -drwCS ${TARGET}${CMAKE_EXECUTABLE_SUFFIX} >${TARGET}_verbose.dis
-            )
-endfunction()
-
 # create map/bin/hex/uf2 file in addition to ELF.
 pico_add_extra_outputs(dbgc_verify)
-pico_add_verbose_dis_output(dbgc_verify)
