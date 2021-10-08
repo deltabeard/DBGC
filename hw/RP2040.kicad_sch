@@ -1405,6 +1405,11 @@
     (uuid 7c822a28-6be5-48ff-b4f2-8dfe250f941d)
   )
 
+  (text "TODO: Internal pull-up exists on RUN pin." (at 45.72 130.81 0)
+    (effects (font (size 1.27 1.27)) (justify left bottom))
+    (uuid 7737cc1d-bc31-4086-9a6e-8e2ea58a5c18)
+  )
+
   (label "USB_BOOT" (at 50.8 25.4 0)
     (effects (font (size 1.27 1.27)) (justify left bottom))
     (uuid 30691150-c2f9-4192-a3aa-0a957a447913)

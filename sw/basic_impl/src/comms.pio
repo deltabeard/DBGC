@@ -23,7 +23,7 @@
     wait 0 GPIO PHI
 .wrap
 
-; Read address and RD pin from GB bus.
+; Read address from GB bus for ROM reads and writes.
 .program gb_bus_get_address
 gb_bus_get_address_start:
 ;	Wait for a new clock cycle, and hence for a new read/write instruction.

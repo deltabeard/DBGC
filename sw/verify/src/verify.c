@@ -127,10 +127,8 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 
 	while (1)
 	{
-		/**
-		 * sm_a15 state machine RX value:
-		 * | 16-bit Address | 0x0000 |
-		 */
+		/* Only read the address, which is stored in the most
+		 * significant two bytes of the RX FIFO. */
 		const io_rw_16 *rxf16 = (io_rw_16*)&pio0->rxf[sm_a15] + 1;
 		io_rw_8 *txf8 = (io_rw_8*)&pio0->txf[sm_do];
 		uint16_t address;
@@ -143,8 +141,8 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 		data = gb[address];
 		*txf8 = data;
 
-		//if(address == 0)
-		//	break;
+		if(address == 0)
+			break;
 	}
 
 	printf("Exiting PIO printing\n");
@@ -518,10 +516,9 @@ int main(void)
 	//set_sys_clock_48mhz();
 
 	vreg_set_voltage(VREG_VOLTAGE_1_25);
+	sleep_ms(1000);
+	set_sys_clock_khz(270000, true);
 	sleep_ms(100);
-	set_sys_clock_khz(250000, true);
-	sleep_ms(100);
-
 
 	i2c_init(i2c_default, 100 * 1000);
 	gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
@@ -538,6 +535,7 @@ int main(void)
 		gpio_set_input_enabled(i, true);
 	}
 
+#if 0
 	for(unsigned i = PIO_PHI; i <= PIO_DIR; i++)
 	{
 		/* Use fast slew rate for GB Bus. */
@@ -546,6 +544,7 @@ int main(void)
 		 * already have schmitt triggers. */
 		gpio_set_input_hysteresis_enabled(i, false);
 	}
+#endif
 
 	/* Set external RTC configuration. */
 	{

@@ -7,19 +7,13 @@
 
 .define IRQ_END_INSTR   7
 
-; Read address and RD pin from GB bus.
+; Read address from GB bus for ROM reads and writes
 .program gb_bus_get_address
 gb_bus_get_address_start:
 ;	Wait for a new clock cycle, and hence for a new read/write instruction.
-	wait 1 GPIO PHI
+	wait 0 GPIO A15
 
-;   Clear IRQ. Lets other state machines know that the Game Boy is going to
-;   request new data.
-    irq clear IRQ_END_INSTR
-
-;   Only continue if A15 is low. If A15 is high, then either the address is not
-;   ready, or this is not a ROM address.
-	jmp PIN gb_bus_get_address_start
+    nop
 
 ;	Read address into ISR.
 	in PINS, 16
@@ -28,14 +22,8 @@ gb_bus_get_address_start:
 ;	This is not required if autopush is enabled
 	push noblock
 
-;	Set Data pins to OUTPUT.
-;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
-    mov osr, ~null	          	; Set OSR to all ones
-;   Side: Take control of the data bus.
-    out pindirs, 8	          	; Output ones to data pindirs
-
 ;	Wait for next instruction
-    wait 0 GPIO PHI
+    wait 1 GPIO A15
 
 .wrap
 
@@ -57,13 +45,7 @@ public gb_bus_write_data:
 
 ;	Keep data output active until new clock cycle.
 ;   Side: Stay in control of the data bus.
-	irq wait IRQ_END_INSTR side 1
-
-;	Set Data pins to INPUT.
-;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
-;   Side: Give control of data bus to the Game Boy.
-    mov osr, ~null	    side 0	; Set OSR to all ones
-    out pindirs, 8	    side 0	; Output ones to data pindirs
+	wait 1 GPIO A15     side 1
 
 ;	Wait for next data output
 .wrap
@@ -105,8 +87,12 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_do)
 	sm_config_set_clkdiv_int_frac(&sm_config_a15, 1, 0);
 	sm_config_set_clkdiv_int_frac(&sm_config_do,  1, 0);
 
-	/* Set all initial pindirs as inputs. */
+	/* Set address bus pins as inputs. */
+	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_PHI, 1, false);
+	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_NRD, 1, false);
+	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_NCS, 1, false);
 	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_A0, NUM_ADDRESS_PINS, false);
+	/* Set data bus pins as outputs. */
 	pio_sm_set_consecutive_pindirs(pio, sm_do,  PIO_D0, NUM_DATA_PINS, true);
 
 	/* Allow PIO to set D[0-7] GPIO pins output. */

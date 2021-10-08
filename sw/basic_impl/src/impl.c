@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <hardware/i2c.h>
 #include <hardware/pio.h>
 #include <hardware/vreg.h>
@@ -20,12 +22,112 @@ typedef enum {
 } io_exp_reg_e;
 
 typedef enum {
-	GB_POWER_OFF = 0,
-	GB_POWER_ON
+	GB_POWER_ON = 0,
+	GB_POWER_OFF = 1
 } gb_pwr_e;
+
+#include <gb_manager.gb.h>
 
 void func_gb(gb_pwr_e pwr);
 
+void __no_inline_not_in_flash_func(gpio_gb_bus)(void)
+{
+	uint8_t *gb;
+	unsigned address = 0;
+	unsigned data;
+	static unsigned last_address = 0;
+	unsigned stor[512];
+	unsigned s_i = 0;
+
+	gb = malloc(gb_manager_rom_len);
+	if(gb == NULL)
+	{
+		printf("Malloc failed.\n");
+		return;
+	}
+
+	memcpy(gb, gb_manager_rom, gb_manager_rom_len);
+
+	vreg_set_voltage(VREG_VOLTAGE_1_30);
+	sleep_ms(100);
+	set_sys_clock_khz(360000, true);
+	sleep_ms(100);
+
+	printf("GB Power on\n");
+	func_gb(GB_POWER_ON);
+
+	while(1)
+	{
+		if(gpio_get(PIO_NRD) != 0)
+		{
+			gpio_put(PIO_DIR, 0);
+			continue;
+		}
+
+		address = (gpio_get_all() >> 5) & 0xFFFF;
+		if(address == last_address)
+			continue;
+
+		last_address = address;
+		gpio_put(PIO_DIR, 1);
+
+		if(address >= gb_manager_rom_len)
+			continue;
+
+		data = (uint32_t)gb[address];
+		data <<= 21;
+		data |= (1UL << PIO_DIR);
+
+		stor[s_i] = address;
+		s_i++;
+
+		gpio_put_all(data);
+
+		if(s_i > sizeof(stor)/sizeof(*stor))
+			break;
+
+	}
+
+	func_gb(GB_POWER_OFF);
+
+	for(unsigned i = 0; i < s_i; i++)
+	{
+		printf("0x%04X\n", address);
+	}
+
+#if 0
+	while(1)
+	{
+		uint32_t all;
+		uint16_t address;
+		uint32_t data;
+
+		while(gpio_get(PIO_A15) == 1)
+			tight_loop_contents();
+
+		/* Read address. */
+		all = gpio_get_all();
+		address = (all >> 5) & 0xFFFF;
+		data = (uint32_t)gb[address];
+		data <<= 21;
+		data |= (1UL << PIO_DIR);
+
+		gpio_put_all(data);
+		//printf("0x%04X 0x%02lX\n", address, data);
+
+		while(gpio_get(PIO_A15) == 0)
+			tight_loop_contents();
+
+		gpio_put(PIO_DIR, 0);
+	}
+#endif
+
+	free(gb);
+
+	return;
+}
+
+#if 0
 void __no_inline_not_in_flash_func(func_pio)(unsigned sm_clk,
 	unsigned sm_a15,
 	unsigned sm_do)
@@ -72,6 +174,7 @@ void __no_inline_not_in_flash_func(func_pio)(unsigned sm_clk,
 
 	return;
 }
+#endif
 
 void func_gb(gb_pwr_e pwr)
 {
@@ -106,11 +209,6 @@ int main(void)
 	if(c == 'r')
 		goto out;
 
-	//vreg_set_voltage(VREG_VOLTAGE_1_20);
-	sleep_ms(100);
-	//set_sys_clock_khz(250000, false);
-	sleep_ms(100);
-
 	printf("Running program\n");
 	/* Initialise I2C. */
 	i2c_init(i2c_default, 100 * 1000);
@@ -135,9 +233,20 @@ int main(void)
 
 	for(unsigned i = PIO_PHI; i <= PIO_A15; i++)
 	{
-		gpio_set_input_enabled(i, true);
+		gpio_init(i);
+		//gpio_set_input_enabled(i, true);
+		gpio_set_dir(i, GPIO_IN);
 	}
 
+	for(unsigned i = PIO_D0; i <= PIO_DIR; i++)
+	{
+		gpio_init(i);
+		//gpio_set_input_enabled(i, false);
+		gpio_set_dir(i, GPIO_OUT);
+		gpio_set_drive_strength(i, GPIO_DRIVE_STRENGTH_12MA);
+	}
+
+#if 0
 	for(unsigned i = PIO_PHI; i <= PIO_DIR; i++)
 	{
 		/* Use fast slew rate for GB Bus. */
@@ -146,7 +255,11 @@ int main(void)
 		 * already have schmitt triggers. */
 		gpio_set_input_hysteresis_enabled(i, false);
 	}
+#endif
 
+	gpio_gb_bus();
+
+#if 0
 	{
 		int sm_clk, sm_a15, sm_do;
 
@@ -160,6 +273,7 @@ int main(void)
 		gb_bus_program_init(pio0, sm_clk, sm_a15, sm_do);
 		func_pio(sm_clk, sm_a15, sm_do);
 	}
+#endif
 
 out:
 	reset_usb_boot(0, 0);
