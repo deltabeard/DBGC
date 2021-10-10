@@ -95,24 +95,18 @@ typedef enum {
 #include <hardware/pio.h>
 #include "comms.pio.h"
 
-#include <gb_manager.gb.h>
+#include <libbet.gb.h>
 #include <hardware/vreg.h>
 #include <pico/multicore.h>
 
-_Noreturn void core1_main(void)
+_Noreturn void __no_inline_not_in_flash_func(core1_pio_manager)(void)
 {
 	unsigned sm_a15, sm_do;
-	uint8_t *gb;
 
 	/* This will panic if sm is not available. */
 	sm_a15 = pio_claim_unused_sm(pio0, true);
 	sm_do = pio_claim_unused_sm(pio0, true);
 	gb_bus_program_init(pio0, sm_a15, sm_do);
-
-	gb = malloc(gb_manager_rom_len);
-	while(gb == NULL) __wfi();
-
-	memcpy(gb, gb_manager_rom, gb_manager_rom_len);
 
 	/* Initialise Game Boy data communication. */
 	func_gb("GB 1");
@@ -120,6 +114,8 @@ _Noreturn void core1_main(void)
 	/* Enable state machines. */
 	pio_sm_set_enabled(pio0, sm_a15, true);
 	pio_sm_set_enabled(pio0, sm_do,  true);
+
+	multicore_fifo_push_blocking(1);
 
 	/* Power cycle GB. */
 	sleep_ms(100);
@@ -138,9 +134,15 @@ _Noreturn void core1_main(void)
 			tight_loop_contents();
 
 		address = *rxf16;
-		data = gb[address];
+		data = libbet_gb[address];
 		*txf8 = data;
 	}
+}
+
+_Noreturn void core1_main(void)
+{
+	save_and_disable_interrupts();
+	core1_pio_manager();
 }
 
 void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
@@ -150,13 +152,39 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 
 	if(started == true)
 	{
-		printf("Core1 already started\n");
+		printf("Core1 already started");
 		return;
 	}
 
 	printf("Starting Core1\n");
 	multicore_launch_core1(core1_main);
 	started = true;
+
+	while(1)
+	{
+		uint32_t out;
+		bool timeout;
+
+		timeout = multicore_fifo_pop_timeout_us(1000, &out);
+		if(timeout == false)
+			continue;
+
+		switch(out)
+		{
+			case 0:
+				printf("Malloc failure.\n");
+				multicore_reset_core1();
+				pio_clear_instruction_memory(pio0);
+				break;
+
+			case 1:
+				printf("State machines enabled\n");
+				return;
+
+			default:
+				break;
+		}
+	}
 
 	return;
 }
@@ -511,10 +539,46 @@ void func_help(const char *cmd)
 	}
 }
 
-int main(void)
+void __no_inline_not_in_flash_func(usb_commander)(void)
 {
 	char buf[64];
 
+new_cmd:
+	printf("CMD> ");
+	for(unsigned i = 0; i < sizeof(buf); i++)
+	{
+		buf[i] = getchar();
+		putchar(buf[i]);
+		if(buf[i] == '\b')
+		{
+			i--;
+			continue;
+		}
+		else if(buf[i] == '\r')
+		{
+			buf[i] = '\0';
+			break;
+		}
+	}
+
+	if(buf[0] == '\0')
+		strcpy(buf, "<no input>");
+
+	for(unsigned i = 0; i < ARRAYSIZE(map); i++)
+	{
+		if(strncmp(buf, map[i].long_arg, strlen(map[i].long_arg)) != 0)
+			continue;
+
+		map[i].func(buf);
+		goto new_cmd;
+	}
+
+	printf("Unrecognised command '%s'\n", buf);
+	goto new_cmd;
+}
+
+int main(void)
+{
 	/* Reduce power consumption to stop IO Expander Power-On Reset Errata. */
 	sleep_ms(10);
 
@@ -582,39 +646,7 @@ int main(void)
 	stdio_init_all();
 
 	printf("%s", CLR_SCRN);
-
-new_cmd:
-	printf("CMD> ");
-	for(unsigned i = 0; i < sizeof(buf); i++)
-	{
-		buf[i] = getchar();
-		putchar(buf[i]);
-		if(buf[i] == '\b')
-		{
-			i--;
-			continue;
-		}
-		else if(buf[i] == '\r')
-		{
-			buf[i] = '\0';
-			break;
-		}
-	}
-
-	if(buf[0] == '\0')
-		strcpy(buf, "<no input>");
-
-	for(unsigned i = 0; i < ARRAYSIZE(map); i++)
-	{
-		if(strncmp(buf, map[i].long_arg, strlen(map[i].long_arg)) != 0)
-			continue;
-
-		map[i].func(buf);
-		goto new_cmd;
-	}
-
-	printf("Unrecognised command '%s'\n", buf);
-	goto new_cmd;
+	usb_commander();
 
 	return 0;
 }
