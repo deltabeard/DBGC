@@ -31,7 +31,8 @@ pico_generate_pio_header(dbgc_verify ${CMAKE_SOURCE_DIR}/src/comms.pio)
 target_compile_definitions(dbgc_verify PRIVATE
         PICO_STDIO_ENABLE_CRLF_SUPPORT=0
         PICO_STDIO_DEFAULT_CRLF=0
-        PARAM_ASSERTIONS_DISABLE_ALL=1)
+        PARAM_ASSERTIONS_DISABLE_ALL=1
+        PICO_MALLOC_PANIC=0)
 target_link_libraries(dbgc_verify
         pico_stdlib pico_stdio pico_bootrom pico_multicore
         hardware_clocks hardware_i2c hardware_rtc hardware_pio hardware_vreg

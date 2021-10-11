@@ -13,8 +13,6 @@ gb_bus_get_address_start:
 ;	Wait for a new clock cycle, and hence for a new read/write instruction.
 	wait 0 GPIO A15
 
-    nop
-
 ;	Read address into ISR.
 	in PINS, 16
 
@@ -23,7 +21,7 @@ gb_bus_get_address_start:
 	push noblock
 
 ;	Wait for next instruction
-    wait 1 GPIO A15
+	wait 1 GPIO A15
 
 .wrap
 
@@ -37,14 +35,14 @@ gb_bus_get_address_start:
 public gb_bus_write_data:
 ;	Pull data from TX FIFO to OSR
 ;	This is not required if autopull is enabled
-;   Side: Return control of the data bus to the Game Boy.
+;       Side: Return control of the data bus to the Game Boy.
 	pull ifempty block  side 0
 
 ;	Output data from OSR to data pins
 	out PINS, 8         side 1
 
 ;	Keep data output active until new clock cycle.
-;   Side: Stay in control of the data bus.
+;       Side: Stay in control of the data bus.
 	wait 1 GPIO A15     side 1
 
 ;	Wait for next data output
@@ -69,11 +67,11 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_do)
 	/* Setting the "IN" pins on "gb_bus_get_address" state machines. */
 	sm_config_set_in_pins(&sm_config_a15, PIO_A0);
 	/* Configure "OUT" pins to the data bus. */
-    sm_config_set_out_pins(&sm_config_do, PIO_D0, NUM_DATA_PINS);
-    sm_config_set_out_pins(&sm_config_a15, PIO_D0, NUM_DATA_PINS);
+	sm_config_set_out_pins(&sm_config_do, PIO_D0, NUM_DATA_PINS);
+	sm_config_set_out_pins(&sm_config_a15, PIO_D0, NUM_DATA_PINS);
 
-    /* Configure "JMP" pins. */
-    sm_config_set_jmp_pin(&sm_config_a15, PIO_A15);
+	/* Configure "JMP" pins. */
+	sm_config_set_jmp_pin(&sm_config_a15, PIO_A15);
 
 	/* Set number of bits in RX FIFO. */
 	/* gb_bus_write_data does not use a RX FIFO. */
@@ -83,7 +81,7 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_do)
 	/* gb_bus_get_address does not use a TX FIFO. */
 	sm_config_set_out_shift(&sm_config_do, true, false, NUM_DATA_PINS);
 
-    /* Set clock speed of PIO state machines. */
+	/* Set clock speed of PIO state machines. */
 	sm_config_set_clkdiv_int_frac(&sm_config_a15, 1, 0);
 	sm_config_set_clkdiv_int_frac(&sm_config_do,  1, 0);
 

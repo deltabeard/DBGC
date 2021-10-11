@@ -6,18 +6,23 @@
 #include <pico/stdlib.h>
 #include <pico/bootrom.h>
 #include <pico/binary_info.h>
+#include <pico/multicore.h>
 #include <hardware/i2c.h>
-#include <hardware/clocks.h>
 #include <hardware/rtc.h>
 #include <hardware/sync.h>
+#include <hardware/vreg.h>
+#include <hardware/pio.h>
 #include <pico/util/datetime.h>
 #include <verify.h>
+
+#include "comms.pio.h"
+#include <libbet.gb.h>
 
 #define ARRAYSIZE(array)	(sizeof(array)/sizeof(array[0]))
 #define CLR_SCRN		"\033[2J"
 
-#define I2C_PCA9536_ADDR 0b01000001
-#define I2C_DS3231M_ADDR 0b01101000
+#define I2C_PCA9536_ADDR	0b01000001
+#define I2C_DS3231M_ADDR	0b01101000
 
 #define CURRENT_MILLENNIUM	21
 #define RTC_YEARS_EPOCH		((CURRENT_MILLENNIUM - 1) * 100)
@@ -92,12 +97,11 @@ typedef enum {
 	IO_EXP_DIRECTION
 } io_exp_reg;
 
-#include <hardware/pio.h>
-#include "comms.pio.h"
-
-#include <libbet.gb.h>
-#include <hardware/vreg.h>
-#include <pico/multicore.h>
+void __attribute__((noreturn)) __printflike(1, 0) dbgc_panic(const char *fmt, ...)
+{
+	(void) fmt;
+	reset_usb_boot(0, 0);
+}
 
 _Noreturn void __no_inline_not_in_flash_func(core1_pio_manager)(void)
 {

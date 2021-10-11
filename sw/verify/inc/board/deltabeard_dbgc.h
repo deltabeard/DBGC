@@ -51,4 +51,8 @@
 #define PICO_DOUBLE_SUPPORT_ROM_V1 0
 #endif
 
+#ifndef PICO_PANIC_FUNCTION
+#define PICO_PANIC_FUNCTION dbgc_panic
+#endif
+
 #endif
