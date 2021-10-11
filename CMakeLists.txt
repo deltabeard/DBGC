@@ -24,7 +24,8 @@ if(NOT DEFINED ENV{GBDK_C_COMPILER})
 endif()
 
 set(GBDK_LINKER_OPTIONS -Wa-l -Wl-m -Wl-j -Wm-p -Wm-ynGBMGR -Wl-yt0
-        -D_loop_forever_hiram=0xFFA0 -Wl-g_loop_forever_hiram=0xFFA0)
+        -D_loop_forever_hiram=0xFFA0 -Wl-g_loop_forever_hiram=0xFFA0
+        -D_menu_wram=0xD000 -Wl-g_menu_wram=0xD000)
 add_custom_target(gb_manager ALL
         DEPENDS ${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb
                 ${gb_rp2040_cart_BINARY_DIR}/gb_manager.asm
