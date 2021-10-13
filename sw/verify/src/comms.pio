@@ -13,8 +13,6 @@ gb_bus_get_address_start:
 ;	Wait for a new clock cycle, and hence for a new read/write instruction.
 	wait 0 GPIO A15
 
-    nop
-
 ;	Read address into ISR.
 	in PINS, 16
 
