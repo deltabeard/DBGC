@@ -1,3 +1,5 @@
+#include <sys/cdefs.h>
+
 #define _GNU_SOURCE
 
 #include <stdio.h>
@@ -36,8 +38,9 @@ void func_rtctemp(const char *cmd);
 void func_rtcread(const char *cmd);
 void func_rtcwrite(const char *cmd);
 void func_gb(const char *cmd);
+void func_set_clock(const char *cmd);
 
-void func_pio(const char *cmd);
+void func_play(const char *cmd);
 void func_date(const char *cmd);
 void func_reboot(const char *cmd);
 
@@ -57,7 +60,8 @@ static const struct func_map map[] = {
 	{ "GB",		"Turn GB on (0) or off (1)\n"
 			       "\t'GB 1'",			func_gb		},
 	{ "DATE",	"Read date and time from internal RTC",	func_date	},
-	{ "PIO",	"Display state of PIO",			func_pio	},
+	{ "PLAY",	"Play a game",			func_play	},
+	{ "CLOCK",	"Set CPU clock speed",			func_set_clock	},
 	{ "REBOOT",	"Reboot to USBBOOT",			func_reboot 	}
 };
 
@@ -95,13 +99,26 @@ typedef enum {
 #include <hardware/pio.h>
 #include "comms.pio.h"
 
+#define PREFETCH_ROM_DATA	0
+#define SECOND_ROM_DATA		1
+
+#if SECOND_ROM_DATA
+#include <gb240p.gb.h>
+#endif
 #include <libbet.gb.h>
 #include <hardware/vreg.h>
 #include <pico/multicore.h>
+#include <ctype.h>
 
 _Noreturn void __no_inline_not_in_flash_func(core1_pio_manager)(void)
 {
 	unsigned sm_a15, sm_do;
+	const unsigned char *rom;
+
+#if PREFETCH_ROM_DATA
+	uint16_t next_address = 0x0104;
+	uint8_t next_data = libbet_gb[next_address];
+#endif
 
 	/* This will panic if sm is not available. */
 	sm_a15 = pio_claim_unused_sm(pio0, true);
@@ -115,6 +132,19 @@ _Noreturn void __no_inline_not_in_flash_func(core1_pio_manager)(void)
 	pio_sm_set_enabled(pio0, sm_a15, true);
 	pio_sm_set_enabled(pio0, sm_do,  true);
 
+	switch(multicore_fifo_pop_blocking())
+	{
+		default:
+		case 1:
+			rom = &libbet_gb[0];
+			break;
+
+#if SECOND_ROM_DATA
+		case 2:
+			rom = &gb240p_gb[0];
+			break;
+#endif
+	}
 	multicore_fifo_push_blocking(1);
 
 	/* Power cycle GB. */
@@ -134,21 +164,34 @@ _Noreturn void __no_inline_not_in_flash_func(core1_pio_manager)(void)
 			tight_loop_contents();
 
 		address = *rxf16;
-		data = libbet_gb[address];
+#if PREFETCH_ROM_DATA
+		if(next_address == address)
+			data = next_data;
+		else
+			data = libbet_gb[address];
+#else
+		data = rom[address];
+#endif
+
 		*txf8 = data;
+
+#if PREFETCH_ROM_DATA
+		next_address = address + 1;
+		next_data = libbet_gb[next_address];
+#endif
 	}
 }
 
 _Noreturn void core1_main(void)
 {
-	save_and_disable_interrupts();
+	//save_and_disable_interrupts();
 	core1_pio_manager();
 }
 
-void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
+void __no_inline_not_in_flash_func(func_play)(const char *cmd)
 {
 	static bool started = false;
-	(void) cmd;
+	unsigned long game_selection;
 
 	if(started == true)
 	{
@@ -156,29 +199,36 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 		return;
 	}
 
+	cmd += strlen("PLAY ");
+	game_selection = strtoul(cmd, NULL, 10);
+	if(game_selection == 0)
+	{
+		printf("Select a game between 1 and 2:\nPLAY 1\n");
+		return;
+	}
+
 	printf("Starting Core1\n");
 	multicore_launch_core1(core1_main);
-	started = true;
+	multicore_fifo_push_blocking(game_selection);
 
 	while(1)
 	{
 		uint32_t out;
 		bool timeout;
 
-		timeout = multicore_fifo_pop_timeout_us(1000, &out);
+		timeout = multicore_fifo_pop_timeout_us(200 * 1000, &out);
 		if(timeout == false)
-			continue;
+			break;
 
 		switch(out)
 		{
 			case 0:
 				printf("Malloc failure.\n");
-				multicore_reset_core1();
-				pio_clear_instruction_memory(pio0);
 				break;
 
 			case 1:
 				printf("State machines enabled\n");
+				started = true;
 				return;
 
 			default:
@@ -186,7 +236,33 @@ void __no_inline_not_in_flash_func(func_pio)(const char *cmd)
 		}
 	}
 
+	printf("Core1 did not start properly\n");
+	multicore_reset_core1();
+	pio_clear_instruction_memory(pio0);
+
 	return;
+}
+
+void func_set_clock(const char *cmd)
+{
+	unsigned long vco;
+	cmd += strlen("PLAY ");
+	vco = strtoul(cmd, NULL, 10);
+	if(vco < 500 || vco > 1500)
+	{
+		printf("CLOCK VCO\n"
+		       "CPU clock will be set to VCO/2\n"
+		       "VCO must be between 1500 and 500\n");
+		return;
+	}
+
+	vco *= 1000 * 1000;
+	printf("Setting clock to %lu\n", vco / 2);
+	sleep_ms(10);
+	vreg_set_voltage(VREG_VOLTAGE_1_20);
+	sleep_ms(10);
+	set_sys_clock_pll(vco, 2, 1);
+	sleep_ms(10);
 }
 
 inline uint8_t bcd_to_int(uint8_t x)
@@ -539,7 +615,7 @@ void func_help(const char *cmd)
 	}
 }
 
-void __no_inline_not_in_flash_func(usb_commander)(void)
+_Noreturn void __no_inline_not_in_flash_func(usb_commander)(void)
 {
 	char buf[64];
 
@@ -547,19 +623,33 @@ new_cmd:
 	printf("CMD> ");
 	for(unsigned i = 0; i < sizeof(buf); i++)
 	{
-		buf[i] = getchar();
-		putchar(buf[i]);
-		if(buf[i] == '\b')
+		int new_char = getchar();
+
+		if((new_char < ' ' || new_char > '~') &&
+				(new_char != '\n' && new_char != '\r' && new_char != '\b'))
+			continue;
+
+		if(new_char == '\b')
 		{
 			i--;
+			putchar(new_char);
 			continue;
 		}
-		else if(buf[i] == '\r')
+		else if(new_char == '\r' || new_char == '\n')
 		{
 			buf[i] = '\0';
 			break;
 		}
+		else if(new_char >= 'a' && new_char <= 'z')
+		{
+			new_char = toupper(new_char);
+		}
+
+		buf[i] = new_char;
+		putchar(buf[i]);
 	}
+
+	putchar('\n');
 
 	if(buf[0] == '\0')
 		strcpy(buf, "<no input>");
@@ -582,12 +672,16 @@ int main(void)
 	/* Reduce power consumption to stop IO Expander Power-On Reset Errata. */
 	sleep_ms(10);
 
-	//set_sys_clock_48mhz();
+	/* Set system clock to 264MHz and flash to 132MHz. */
+	{
+		const unsigned vco = 552000000;
+		const unsigned div1 = 2, div2 = 1;
 
-	vreg_set_voltage(VREG_VOLTAGE_1_25);
-	sleep_ms(1000);
-	set_sys_clock_khz(270000, true);
-	sleep_ms(100);
+		vreg_set_voltage(VREG_VOLTAGE_1_15);
+		sleep_ms(10);
+		set_sys_clock_pll(vco, div1, div2);
+		sleep_ms(10);
+	}
 
 	i2c_init(i2c_default, 100 * 1000);
 	gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
@@ -602,16 +696,16 @@ int main(void)
 	for(unsigned i = PIO_PHI; i <= PIO_A15; i++)
 	{
 		gpio_set_input_enabled(i, true);
+		/* Disable schmitt triggers on GB Bus. The bus transceivers
+		 * already have schmitt triggers. */
+		gpio_set_input_hysteresis_enabled(i, false);
 	}
 
-#if 0
+#if 1
 	for(unsigned i = PIO_PHI; i <= PIO_DIR; i++)
 	{
 		/* Use fast slew rate for GB Bus. */
 		gpio_set_slew_rate(i, GPIO_SLEW_RATE_FAST);
-		/* Disable schmitt triggers on GB Bus. The bus transceivers
-		 * already have schmitt triggers. */
-		gpio_set_input_hysteresis_enabled(i, false);
 	}
 #endif
 

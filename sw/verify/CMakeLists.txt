@@ -35,7 +35,7 @@ target_compile_definitions(dbgc_verify PRIVATE
 target_link_libraries(dbgc_verify
         pico_stdlib pico_stdio pico_bootrom pico_multicore
         hardware_clocks hardware_i2c hardware_rtc hardware_pio hardware_vreg
-        hardware_sync
+        hardware_sync hardware_pll
         pico_binary_info)
 pico_enable_stdio_usb(dbgc_verify 1)
 pico_enable_stdio_uart(dbgc_verify 0)
