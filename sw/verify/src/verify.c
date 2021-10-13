@@ -99,26 +99,74 @@ typedef enum {
 #include <hardware/pio.h>
 #include "comms.pio.h"
 
-#define PREFETCH_ROM_DATA	0
-#define SECOND_ROM_DATA		1
+#define ROM_BANK_SIZE   0x4000
 
-#if SECOND_ROM_DATA
+#include <megaman1.gb.h>
 #include <gb240p.gb.h>
-#endif
 #include <libbet.gb.h>
 #include <hardware/vreg.h>
 #include <pico/multicore.h>
 #include <ctype.h>
 
-_Noreturn void __no_inline_not_in_flash_func(core1_pio_manager)(void)
-{
+typedef enum {
+	MULTICORE_CMD_SM_ENABLED = 0,
+
+	MULTICORE_CMD_MBC_ACCEPTED,
+	MULTICORE_CMD_MBC_FAIL,
+
+	MULTICORE_CMD_ROM_ACCEPTED,
+	MULTICORE_CMD_ROM_FAIL,
+
+	MULTICORE_CMD_RAM_ACCEPTED,
+	MULTICORE_CMD_RAM_FAIL,
+
+	MULTICORE_CMD_PLAYING
+} multicore_cmd_e;
+
+const uint16_t mbc_location = 0x0147;
+const uint16_t bank_count_location = 0x0148;
+const uint16_t ram_size_location = 0x0149;
+
+const uint8_t cart_mbc_lut[] =
+	{
+		0, 1, 1, 1, -1, 2, 2, -1, 0, 0, -1, 0, 0, 0, -1, 3,
+		3, 3, 3, 3, -1, -1, -1, -1, -1, 5, 5, 5, 5, 5, 5, -1
+	};
+const uint8_t cart_ram_lut[] =
+	{
+		0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0,
+		1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0
+	};
+const uint16_t num_rom_banks_lut[] =
+	{
+		2, 4, 8, 16, 32, 64, 128, 256, 512, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+		0, 0, 72, 80, 96, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+	};
+const uint8_t num_ram_banks_lut[] = {0, 1, 1, 4, 16, 8};
+const uint32_t ram_sizes[] =
+	{
+		0x00, 0x800, 0x2000, 0x8000, 0x20000
+	};
+
+void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 	unsigned sm_a15, sm_do;
 	const unsigned char *rom;
 
-#if PREFETCH_ROM_DATA
-	uint16_t next_address = 0x0104;
-	uint8_t next_data = libbet_gb[next_address];
-#endif
+	/* Cartridge information:
+	 * Memory Bank Controller (MBC) type. */
+	uint8_t mbc;
+	/* Whether the MBC has internal RAM. */
+	uint8_t cart_ram;
+	/* Number of ROM banks in cartridge. */
+	uint16_t num_rom_banks;
+
+	uint16_t selected_rom_bank = 1;
+	/* Cartridge ROM/RAM mode select. */
+	uint8_t cart_mode_select = 0;
 
 	/* This will panic if sm is not available. */
 	sm_a15 = pio_claim_unused_sm(pio0, true);
@@ -135,57 +183,183 @@ _Noreturn void __no_inline_not_in_flash_func(core1_pio_manager)(void)
 	switch(multicore_fifo_pop_blocking())
 	{
 		default:
-		case 1:
-			rom = &libbet_gb[0];
-			break;
+	case 1:
+		rom = &libbet_gb[0];
+		break;
 
-#if SECOND_ROM_DATA
-		case 2:
-			rom = &gb240p_gb[0];
-			break;
-#endif
+	case 2:
+		rom = &gb240p_gb[0];
+		break;
+
+	case 3:
+		rom = &megaman1_gb[0];
+		break;
 	}
-	multicore_fifo_push_blocking(1);
+
+	/* Let core0 know that we're running. */
+	multicore_fifo_push_blocking(MULTICORE_CMD_SM_ENABLED);
+
+	/* Initialise ROM data. */
+	/* Check if cartridge type is supported, and set MBC type. */
+	{
+		const uint8_t mbc_value = rom[mbc_location];
+		const uint8_t ram_sz_value = rom[ram_size_location];
+		unsigned ram_sz;
+
+		if(mbc_value > sizeof(cart_mbc_lut) - 1 ||
+		   (mbc = cart_mbc_lut[mbc_value]) == 255u ||
+		   mbc > 1)
+		{
+			multicore_fifo_push_blocking(MULTICORE_CMD_MBC_FAIL);
+			return;
+		}
+		multicore_fifo_push_blocking(MULTICORE_CMD_MBC_ACCEPTED);
+
+		cart_ram = cart_ram_lut[mbc_value];
+		ram_sz = ram_sizes[ram_sz_value];
+
+#if 0
+		if(ram_sz != 0)
+		{
+			ram = malloc(ram_sz);
+			if(ram == NULL)
+			{
+				multicore_fifo_push_blocking(
+					MULTICORE_CMD_RAM_FAIL);
+				return;
+			}
+		}
+#else
+		if(ram_sz != 0)
+		{
+			multicore_fifo_push_blocking(MULTICORE_CMD_RAM_FAIL);
+			return;
+		}
+#endif
+		multicore_fifo_push_blocking(MULTICORE_CMD_RAM_ACCEPTED);
+
+		num_rom_banks = num_rom_banks_lut[rom[bank_count_location]];
+		multicore_fifo_push_blocking(MULTICORE_CMD_ROM_ACCEPTED);
+	}
+
+	multicore_fifo_push_blocking(MULTICORE_CMD_PLAYING);
 
 	/* Power cycle GB. */
 	sleep_ms(100);
 	func_gb("GB 0");
 
-	while (1)
+	while(1)
 	{
 		/* Only read the address, which is stored in the most
 		 * significant two bytes of the RX FIFO. */
-		const io_rw_16 *rxf16 = (io_rw_16*)&pio0->rxf[sm_a15] + 1;
-		io_rw_8 *txf8 = (io_rw_8*)&pio0->txf[sm_do];
+		io_ro_32 *rx_sm_a15 = &pio0->rxf[sm_a15];
+		io_wo_8 *txf8 = (io_wo_8 *) &pio0->txf[sm_do];
+		uint32_t in;
 		uint16_t address;
 		uint8_t data;
 
 		while(pio_sm_is_rx_fifo_empty(pio0, sm_a15))
 			tight_loop_contents();
 
-		address = *rxf16;
-#if PREFETCH_ROM_DATA
-		if(next_address == address)
-			data = next_data;
-		else
-			data = libbet_gb[address];
-#else
-		data = rom[address];
+		in = *rx_sm_a15;
+		address = in & 0xFFFF;
+
+#if 0
+		if(gpio_get(PIO_NRD) == true)
+		{
+			/* If we need to write data to ROM, then we obtain the
+			 * data byte from the third byte of the RX FIFO. */
+			data = in >> 16;
+
+			switch(address >> 12)
+			{
+			case 0x0:
+			case 0x1:
+				continue;
+
+			case 0x2:
+			case 0x3:
+				if(mbc == 1)
+				{
+					//selected_rom_bank = data & 0x7;
+					selected_rom_bank = (data & 0x1F) |
+								(selected_rom_bank &
+								 0x60);
+
+					if((selected_rom_bank & 0x1F) == 0x00)
+						selected_rom_bank++;
+				}
+
+				selected_rom_bank = selected_rom_bank %
+							num_rom_banks;
+				continue;
+
+			case 0x4:
+			case 0x5:
+				if(mbc == 1)
+				{
+					//cart_ram_bank = (data & 3);
+					selected_rom_bank =
+						((data & 3) << 5) |
+						(selected_rom_bank & 0x1F);
+					selected_rom_bank =
+						selected_rom_bank %
+						num_rom_banks;
+				}
+
+				continue;
+
+			case 0x6:
+			case 0x7:
+				cart_mode_select = (data & 1);
+				continue;
+			}
+
+			continue;
+		}
 #endif
+		switch(address >> 12)
+		{
+		case 0x0:
+		case 0x1:
+		case 0x2:
+		case 0x3:
+			data = rom[address];
+			break;
+
+		case 0x4:
+		case 0x5:
+		case 0x6:
+		case 0x7:
+			if(mbc == 1 && cart_mode_select)
+			{
+				data = rom[address +
+					   ((selected_rom_bank & 0x1F) - 1) *
+					   ROM_BANK_SIZE];
+			}
+			else
+			{
+				data = rom[address +
+					   (selected_rom_bank - 1) *
+					   ROM_BANK_SIZE];
+			}
+
+			break;
+
+		default:
+			continue;
+		}
 
 		*txf8 = data;
-
-#if PREFETCH_ROM_DATA
-		next_address = address + 1;
-		next_data = libbet_gb[next_address];
-#endif
 	}
 }
 
-_Noreturn void core1_main(void)
-{
+_Noreturn void core1_main(void){
 	//save_and_disable_interrupts();
 	core1_pio_manager();
+
+	while(1)
+		__wfi();
 }
 
 void __no_inline_not_in_flash_func(func_play)(const char *cmd)
@@ -195,15 +369,16 @@ void __no_inline_not_in_flash_func(func_play)(const char *cmd)
 
 	if(started == true)
 	{
-		printf("Core1 already started");
-		return;
+		printf("Core1 already started\n");
+		multicore_reset_core1();
+		pio_clear_instruction_memory(pio0);
 	}
 
 	cmd += strlen("PLAY ");
 	game_selection = strtoul(cmd, NULL, 10);
 	if(game_selection == 0)
 	{
-		printf("Select a game between 1 and 2:\nPLAY 1\n");
+		printf("Select a game between 1 and 3:\nPLAY 1\n");
 		return;
 	}
 
@@ -214,28 +389,49 @@ void __no_inline_not_in_flash_func(func_play)(const char *cmd)
 	while(1)
 	{
 		uint32_t out;
-		bool timeout;
 
-		timeout = multicore_fifo_pop_timeout_us(200 * 1000, &out);
-		if(timeout == false)
-			break;
-
+		out = multicore_fifo_pop_blocking();
 		switch(out)
 		{
-			case 0:
-				printf("Malloc failure.\n");
-				break;
+		case MULTICORE_CMD_SM_ENABLED:
+			printf("State machines enabled\n");
+			break;
 
-			case 1:
-				printf("State machines enabled\n");
-				started = true;
-				return;
+		case MULTICORE_CMD_MBC_ACCEPTED:
+			printf("MBC accepted\n");
+			break;
 
-			default:
-				break;
+		case MULTICORE_CMD_MBC_FAIL:
+			printf("MBC check failed\n");
+			goto err;
+
+		case MULTICORE_CMD_ROM_ACCEPTED:
+			printf("ROM accepted\n");
+			break;
+
+		case MULTICORE_CMD_ROM_FAIL:
+			printf("ROM rejected\n");
+			goto err;
+
+		case MULTICORE_CMD_RAM_ACCEPTED:
+			printf("RAM accepted\n");
+			break;
+
+		case MULTICORE_CMD_RAM_FAIL:
+			printf("RAM rejected\n");
+			goto err;
+
+		case MULTICORE_CMD_PLAYING:
+			printf("Playing\n");
+			started = true;
+			return;
+
+		default:
+			break;
 		}
 	}
 
+err:
 	printf("Core1 did not start properly\n");
 	multicore_reset_core1();
 	pio_clear_instruction_memory(pio0);
