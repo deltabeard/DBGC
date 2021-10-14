@@ -13,7 +13,13 @@
 #include <hardware/rtc.h>
 #include <hardware/sync.h>
 #include <pico/util/datetime.h>
+#include <hardware/structs/xip_ctrl.h>
 #include <verify.h>
+
+#define OPT_LIKELY(expr)	__builtin_expect(!!(expr), 1)
+#define OPT_UNLIKELY(expr)	__builtin_expect(!!(expr), 0)
+#define OPT_INLINE		inline
+#define OPT_FORCE_INLINE	__attribute__((__always_inline__)) OPT_INLINE
 
 #define ARRAYSIZE(array)	(sizeof(array)/sizeof(array[0]))
 #define CLR_SCRN		"\033[2J"
@@ -39,6 +45,7 @@ void func_rtcread(const char *cmd);
 void func_rtcwrite(const char *cmd);
 void func_gb(const char *cmd);
 void func_set_clock(const char *cmd);
+void dma_test(const char *cmd);
 
 void func_play(const char *cmd);
 void func_date(const char *cmd);
@@ -61,8 +68,9 @@ static const struct func_map map[] = {
 			       "\t'GB 1'",			func_gb		},
 	{ "DATE",	"Read date and time from internal RTC",	func_date	},
 	{ "PLAY",	"Play a game",			func_play	},
-	{ "CLOCK",	"Set CPU clock speed",			func_set_clock	},
-	{ "REBOOT",	"Reboot to USBBOOT",			func_reboot 	}
+	{ "CLOCK",	"Set CPU clock speed",		func_set_clock	},
+	{ "DMA",	"Test DMA Speed",			dma_test	},
+	{ "REBOOT",	"Reboot to USBBOOT",		func_reboot 	}
 };
 
 typedef enum {
@@ -107,6 +115,8 @@ typedef enum {
 #include <hardware/vreg.h>
 #include <pico/multicore.h>
 #include <ctype.h>
+#include <hardware/dma.h>
+#include <hardware/structs/ssi.h>
 
 typedef enum {
 	MULTICORE_CMD_SM_ENABLED = 0,
@@ -152,9 +162,112 @@ const uint32_t ram_sizes[] =
 		0x00, 0x800, 0x2000, 0x8000, 0x20000
 	};
 
+#define DMA_COPY_ROM 0
+
+// This example DMAs 16kB of data from the start of flash to SRAM, and
+// measures the transfer speed.
+//
+// The SSI (flash interface) inside the XIP block has DREQ logic, so we can
+// DMA directly from its FIFOs. Unlike the XIP stream hardware (see
+// flash_xip_stream.c) this can *not* be done whilst code is running from
+// flash, without careful footwork like we do here. The tradeoff is that it's
+// ~2.5x as fast in QSPI mode, ~2x as fast in SPI mode.
+
+void __no_inline_not_in_flash_func(flash_bulk_read)(uint32_t *rxbuf, uint32_t flash_offs, size_t len,
+						    uint dma_chan) {
+	// SSI must be disabled to set transfer size. If software is executing
+	// from flash right now then it's about to have a bad time
+	ssi_hw->ssienr = 0;
+	ssi_hw->ctrlr1 = len - 1; // NDF, number of data frames
+	ssi_hw->dmacr = SSI_DMACR_TDMAE_BITS | SSI_DMACR_RDMAE_BITS;
+	ssi_hw->ssienr = 1;
+	// Other than NDF, the SSI configuration used for XIP is suitable for a bulk read too.
+
+	// Configure and start the DMA. Note we are avoiding the dma_*() functions
+	// as we can't guarantee they'll be inlined
+	dma_hw->ch[dma_chan].read_addr = (uint32_t) &ssi_hw->dr0;
+	dma_hw->ch[dma_chan].write_addr = (uint32_t) rxbuf;
+	dma_hw->ch[dma_chan].transfer_count = len;
+	// Must enable DMA byteswap because non-XIP 32-bit flash transfers are
+	// big-endian on SSI (we added a hardware tweak to make XIP sensible)
+	dma_hw->ch[dma_chan].ctrl_trig =
+		DMA_CH0_CTRL_TRIG_BSWAP_BITS |
+		DREQ_XIP_SSIRX << DMA_CH0_CTRL_TRIG_TREQ_SEL_LSB |
+		dma_chan << DMA_CH0_CTRL_TRIG_CHAIN_TO_LSB |
+		DMA_CH0_CTRL_TRIG_INCR_WRITE_BITS |
+		DMA_CH0_CTRL_TRIG_DATA_SIZE_VALUE_SIZE_WORD << DMA_CH0_CTRL_TRIG_DATA_SIZE_LSB |
+		DMA_CH0_CTRL_TRIG_EN_BITS;
+
+	// Now DMA is waiting, kick off the SSI transfer (mode continuation bits in LSBs)
+	ssi_hw->dr0 = (flash_offs << 8u) | 0xa0u;
+
+	// Wait for DMA finish
+	while (dma_hw->ch[dma_chan].ctrl_trig & DMA_CH0_CTRL_TRIG_BUSY_BITS);
+
+	// Reconfigure SSI before we jump back into flash!
+	ssi_hw->ssienr = 0;
+	ssi_hw->ctrlr1 = 0; // Single 32-bit data frame per transfer
+	ssi_hw->dmacr = 0;
+	ssi_hw->ssienr = 1;
+}
+
+#define DATA_SIZE_WORDS 4096
+
+uint32_t rxdata[DATA_SIZE_WORDS];
+uint32_t *expect = (uint32_t *) XIP_NOCACHE_NOALLOC_BASE;
+
+void dma_test(const char *cmd)
+{
+	uint32_t interrupts;
+	uint32_t words;
+
+	cmd += strlen("DMA ");
+	words = strtoul(cmd, NULL, 10);
+	if(words == 0 || words > DATA_SIZE_WORDS)
+	{
+		printf("Invalid word count\n");
+		return;
+	}
+
+	memset(rxdata, 0, words * sizeof(uint32_t));
+
+	printf("Starting DMA transfer of %lu bytes\n", words * sizeof(uint32_t));
+	interrupts = save_and_disable_interrupts();
+	uint32_t start_time = time_us_32();
+	flash_bulk_read(rxdata, 0, words, 0);
+	uint32_t finish_time = time_us_32();
+	restore_interrupts(interrupts);
+	printf("DMA finished\n");
+
+	float elapsed_time_s = 1e-6f * (float)(finish_time - start_time);
+	printf("Transfer speed: %.3f MB/s\n", ((float)sizeof(uint32_t) * words / 1e6f) / elapsed_time_s);
+
+	bool mismatch = false;
+	for (int i = 0; i < words; ++i) {
+		if (rxdata[i] != expect[i]) {
+			printf("Mismatch at %d: expected %08x, got %08x\n", i, expect[i], rxdata[i]);
+			mismatch = true;
+			break;
+		}
+	}
+	if (!mismatch)
+		printf("Data check ok\n");
+}
+
+void power_gb(bool turn_gb_on)
+{
+	uint8_t tx[2];
+	tx[0] = IO_EXP_OUTPUT_PORT;
+	tx[1] = 0b11111110 | !turn_gb_on;
+	i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
+			   sizeof(tx), false);
+}
+
 void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 	unsigned sm_a15, sm_do;
+	const unsigned char *rom_flash;
 	const unsigned char *rom;
+	uint32_t rom_len;
 
 	/* Cartridge information:
 	 * Memory Bank Controller (MBC) type. */
@@ -165,8 +278,6 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 	uint16_t num_rom_banks;
 
 	uint16_t selected_rom_bank = 1;
-	/* Cartridge ROM/RAM mode select. */
-	uint8_t cart_mode_select = 0;
 
 	/* This will panic if sm is not available. */
 	sm_a15 = pio_claim_unused_sm(pio0, true);
@@ -174,7 +285,7 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 	gb_bus_program_init(pio0, sm_a15, sm_do);
 
 	/* Initialise Game Boy data communication. */
-	func_gb("GB 1");
+	power_gb(false);
 
 	/* Enable state machines. */
 	pio_sm_set_enabled(pio0, sm_a15, true);
@@ -184,17 +295,43 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 	{
 		default:
 	case 1:
-		rom = &libbet_gb[0];
+		rom_flash = libbet_gb;
+		rom_len = libbet_gb_len;
 		break;
 
 	case 2:
-		rom = &gb240p_gb[0];
+		rom_flash = gb240p_gb + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
+		rom_len = gb240p_gb_len;
 		break;
 
 	case 3:
-		rom = &megaman1_gb[0];
+		rom_flash = megaman1_gb + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
+		rom_len = megaman1_gb_len;
 		break;
 	}
+
+#if 0
+	rom = malloc(ROM_BANK_SIZE * 2);
+	if(rom == NULL)
+	{
+		multicore_fifo_push_blocking(MULTICORE_CMD_ROM_FAIL);
+		return;
+	}
+	memcpy(rom, rom_flash, ROM_BANK_SIZE * 2);
+#elif DMA_COPY_ROM
+	rom = malloc(ROM_BANK_SIZE * 2);
+	if(rom == NULL)
+	{
+		multicore_fifo_push_blocking(MULTICORE_CMD_ROM_FAIL);
+		return;
+	}
+	save_and_disable_interrupts();
+	flash_bulk_read((uint32_t *) rom,
+			(uint32_t) (rom_flash - XIP_NOCACHE_NOALLOC_BASE),
+			ROM_BANK_SIZE * 2, 0);
+#else
+	rom = rom_flash;
+#endif
 
 	/* Let core0 know that we're running. */
 	multicore_fifo_push_blocking(MULTICORE_CMD_SM_ENABLED);
@@ -246,36 +383,50 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 
 	/* Power cycle GB. */
 	sleep_ms(100);
-	func_gb("GB 0");
+	power_gb(true);
+
+	/* Disable cache. */
+	//xip_ctrl_hw->ctrl &= ~XIP_CTRL_EN_BITS;
+	/* XIP Cache is required for data fetching. */
+
+	save_and_disable_interrupts();
 
 	while(1)
 	{
 		/* Only read the address, which is stored in the most
 		 * significant two bytes of the RX FIFO. */
 		io_ro_32 *rx_sm_a15 = &pio0->rxf[sm_a15];
-		io_wo_8 *txf8 = (io_wo_8 *) &pio0->txf[sm_do];
-		uint32_t in;
+		io_wo_8 *tx_sm_do = (io_wo_8 *) &pio0->txf[sm_do];
+		union {
+			struct {
+				uint16_t address;
+				uint8_t data;
+				uint8_t is_write;
+			};
+			uint32_t raw;
+		} in;
 		uint16_t address;
 		uint8_t data;
 
 		while(pio_sm_is_rx_fifo_empty(pio0, sm_a15))
 			tight_loop_contents();
 
-		in = *rx_sm_a15;
-		address = in & 0xFFFF;
+		in.raw = *rx_sm_a15;
+		address = in.address;
 
-#if 0
-		if(gpio_get(PIO_NRD) == true)
+#if 1
+		if(OPT_UNLIKELY(in.is_write))
 		{
 			/* If we need to write data to ROM, then we obtain the
 			 * data byte from the third byte of the RX FIFO. */
-			data = in >> 16;
+			data = in.data;
 
 			switch(address >> 12)
 			{
 			case 0x0:
 			case 0x1:
-				continue;
+				/* TODO: RAM enable is currently ignored. */
+				break;
 
 			case 0x2:
 			case 0x3:
@@ -283,16 +434,21 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 				{
 					//selected_rom_bank = data & 0x7;
 					selected_rom_bank = (data & 0x1F) |
-								(selected_rom_bank &
-								 0x60);
+						(selected_rom_bank & 0x60);
 
+					/* Select bank 1 if bank 0 is selected. */
 					if((selected_rom_bank & 0x1F) == 0x00)
 						selected_rom_bank++;
+					else
+					{
+						/* Wrap bank number. */
+						selected_rom_bank = selected_rom_bank %
+							num_rom_banks;
+					}
 				}
 
-				selected_rom_bank = selected_rom_bank %
-							num_rom_banks;
-				continue;
+
+				break;
 
 			case 0x4:
 			case 0x5:
@@ -307,12 +463,12 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 						num_rom_banks;
 				}
 
-				continue;
+				break;
 
 			case 0x6:
 			case 0x7:
-				cart_mode_select = (data & 1);
-				continue;
+				//cart_mode_select = (data & 1);
+				break;
 			}
 
 			continue;
@@ -331,26 +487,17 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 		case 0x5:
 		case 0x6:
 		case 0x7:
-			if(mbc == 1 && cart_mode_select)
-			{
-				data = rom[address +
-					   ((selected_rom_bank & 0x1F) - 1) *
-					   ROM_BANK_SIZE];
-			}
-			else
-			{
-				data = rom[address +
-					   (selected_rom_bank - 1) *
-					   ROM_BANK_SIZE];
-			}
+			data = rom[address + ((selected_rom_bank - 1) *
+				   ROM_BANK_SIZE)];
 
 			break;
 
 		default:
+			/* Ignore invalid addresses. */
 			continue;
 		}
 
-		*txf8 = data;
+		*tx_sm_do = data;
 	}
 }
 
@@ -372,6 +519,8 @@ void __no_inline_not_in_flash_func(func_play)(const char *cmd)
 		printf("Core1 already started\n");
 		multicore_reset_core1();
 		pio_clear_instruction_memory(pio0);
+		pio_sm_set_enabled(pio0, 0, false);
+		pio_sm_set_enabled(pio0, 1, false);
 	}
 
 	cmd += strlen("PLAY ");
@@ -785,12 +934,7 @@ void func_gb(const char *cmd)
 		return;
 	}
 
-	uint8_t tx[2];
-	tx[0] = IO_EXP_OUTPUT_PORT;
-	tx[1] = 0b11111110 | turn_gb_on;
-	i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
-			   sizeof(tx), false);
-
+	power_gb(turn_gb_on);
 	return;
 }
 
@@ -868,7 +1012,7 @@ int main(void)
 	/* Reduce power consumption to stop IO Expander Power-On Reset Errata. */
 	sleep_ms(10);
 
-	/* Set system clock to 264MHz and flash to 132MHz. */
+	/* Set system clock to 276MHz and flash to 138MHz. */
 	{
 		const unsigned vco = 552000000;
 		const unsigned div1 = 2, div2 = 1;
@@ -935,6 +1079,7 @@ int main(void)
 	 * RP2040 will reset to BOOTSEL mode. */
 	stdio_init_all();
 
+	func_play("PLAY 3");
 	printf("%s", CLR_SCRN);
 	usb_commander();
 

@@ -25,7 +25,6 @@ gb_bus_get_address_start:
 
 gb_bus_push:
 ;	Push address from ISR to RX FIFO
-;	This is not required if autopush is enabled
 	push noblock
 
 ;	Wait for next instruction
@@ -36,10 +35,14 @@ gb_bus_read_data:
 ;   Wait for data to become ready. Delay 2 cycles to be sure.
     wait 0 GPIO PHI [2]
 
+;   Fill the X register with ones.
+    mov X, ~null
+
 ;   Read address and data into ISR.
     in PINS, 24
-;   Shift to LSB.
-    in NULL, 8
+
+;   Shift the address and data to LSB, and fill the MSB byte with ones.
+    in X, 8
 
     jmp gb_bus_push
 
@@ -68,7 +71,8 @@ public gb_bus_write_data:
 
 ;	Keep data output active until new clock cycle.
 ;   Side: Stay in control of the data bus.
-	wait 1 GPIO A15     side 1
+    wait 0 GPIO PHI     side 1
+	wait 1 GPIO PHI     side 1
 
 ;	Set Data pins to INPUT.
 ;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
@@ -77,31 +81,6 @@ public gb_bus_write_data:
     						; Side: set DATA_DIR to GB -> RP2040 (A -> B)
 
 ;	Wait for next data output
-.wrap
-
-; Read data from GB bus for ROM writes
-.program gb_bus_read_data
-gb_bus_get_address_start:
-;	Wait for a new clock cycle, and hence for a new read/write instruction.
-	wait 1 GPIO NRD
-
-;	Set Data pins to INPUT.
-	mov osr, null	        ; Set OSR to all zeros
-	out pindirs, 8	      	; Output zeros to data pindirs
-
-;   Wait for data to be ready.
-    wait 0 GPIO PHI
-
-;	Read data into ISR.
-	in PINS, 8
-
-;	Push address from ISR to RX FIFO
-;	This is not required if autopush is enabled
-	push noblock
-
-;	Wait for next instruction
-    wait 1 GPIO PHI
-
 .wrap
 
 % c-sdk {
