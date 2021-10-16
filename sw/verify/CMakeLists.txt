@@ -40,5 +40,11 @@ target_link_libraries(dbgc_verify
 pico_enable_stdio_usb(dbgc_verify 1)
 pico_enable_stdio_uart(dbgc_verify 0)
 
-# create map/bin/hex/uf2 file in addition to ELF.
-pico_add_extra_outputs(dbgc_verify)
+pico_add_uf2_output(dbgc_verify)
+function(pico_add_verbose_dis_output TARGET)
+    add_custom_command(TARGET ${TARGET} POST_BUILD
+            COMMAND ${CMAKE_OBJDUMP} -h $<TARGET_FILE:${TARGET}> >$<IF:$<BOOL:$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>>,$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>,$<TARGET_PROPERTY:${TARGET},NAME>>.dis
+            COMMAND ${CMAKE_OBJDUMP} -drwCSl $<TARGET_FILE:${TARGET}> >>$<IF:$<BOOL:$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>>,$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>,$<TARGET_PROPERTY:${TARGET},NAME>>.dis
+            )
+endfunction()
+pico_add_verbose_dis_output(dbgc_verify)

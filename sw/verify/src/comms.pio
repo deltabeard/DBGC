@@ -4,14 +4,13 @@
 
 .define PHI         2
 .define NRD         3
+.define NCS         4
 .define A15         20
-
-.define IRQ_END_INSTR   7
 
 ;; Read address from GB bus for ROM reads and writes
 .program gb_bus_get_address
 gb_bus_get_address_start:
-;	Wait for a new clock cycle, and hence for a new read/write instruction.
+;	Wait for a ROM read/write instruction.
 	wait 0 GPIO A15
 
 ;   Jump if a data read is requested.
@@ -23,12 +22,15 @@ gb_bus_get_address_start:
 ;   No data is to be read, so push address to LSB and zero data byte.
 	in NULL, 16
 
-gb_bus_push:
 ;	Push address from ISR to RX FIFO
-	push noblock
+;	push noblock
 
+;   Wait for low edge of PHI, before checking for next instruction.
+    wait 0 GPIO PHI
+
+gb_bus_next_instr:
 ;	Wait for next instruction
-    wait 1 GPIO A15
+    wait 1 GPIO PHI
 .wrap
 
 gb_bus_read_data:
@@ -44,8 +46,57 @@ gb_bus_read_data:
 ;   Shift the address and data to LSB, and fill the MSB byte with ones.
     in X, 8
 
-    jmp gb_bus_push
+;	Push address, data, and write flag from ISR to RX FIFO
+;	push noblock
 
+    jmp gb_bus_next_instr
+; End
+
+;; Read address from GB bus for RAM reads and writes
+;; Only addresses between A000 and BFFF inclusive must be handled by the CPU.
+.program gb_bus_get_cs
+gb_bus_get_cs_start:
+;	Wait for a RAM read/write instruction.
+	wait 0 GPIO NCS
+
+;   Jump if a data read is requested.
+	jmp PIN gb_bus_read_data
+
+;	Read address into ISR.
+	in PINS, 16
+
+;   No data is to be read, so push address to LSB and zero data byte.
+	in NULL, 16
+
+;	Push address from ISR to RX FIFO
+;	push noblock
+
+;   Wait for low edge of PHI, before checking for next instruction.
+    wait 0 GPIO PHI
+
+gb_bus_next_instr:
+;	Wait for next instruction
+    wait 1 GPIO PHI
+.wrap
+
+gb_bus_read_data:
+;   Wait for data to become ready. Delay 2 cycles to be sure.
+    wait 0 GPIO PHI [2]
+
+;   Fill the X register with ones.
+    mov X, ~null
+
+;   Read address and data into ISR.
+    in PINS, 24
+
+;   Shift the address and data to LSB, and fill the MSB byte with ones.
+    in X, 8
+
+;	Push address, data, and write flag from ISR to RX FIFO
+;	push noblock
+
+    jmp gb_bus_next_instr
+; End
 
 ;; Send data to the Game Boy. This is done when the Game Boy is performing a
 ;; read operation of an address.
@@ -86,39 +137,44 @@ public gb_bus_write_data:
 % c-sdk {
 #include <verify.h>
 
-void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_do)
+void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_ncs,
+        unsigned sm_do)
 {
-	pio_sm_config sm_config_a15, sm_config_do;
-	uint gb_bus_get_address_off, gb_bus_write_data_off;
+	pio_sm_config sm_config_a15, sm_config_ncs, sm_config_do;
+	uint gb_bus_get_address_off, gb_bus_get_cs_off, gb_bus_write_data_off;
 
 	gb_bus_get_address_off = pio_add_program(pio, &gb_bus_get_address_program);
+	gb_bus_get_cs_off = pio_add_program(pio, &gb_bus_get_cs_program);
 	gb_bus_write_data_off = pio_add_program(pio, &gb_bus_write_data_program);
 
 	sm_config_a15 = gb_bus_get_address_program_get_default_config(gb_bus_get_address_off);
+	sm_config_ncs = gb_bus_get_address_program_get_default_config(gb_bus_get_cs_off);
 	sm_config_do = gb_bus_write_data_program_get_default_config(gb_bus_write_data_off);
 
 	/* Configure SM_A15, and SM_CS. */
 	/* Setting the "IN" pins on "gb_bus_get_address" state machines. */
+	/* Set the first "IN" pin on the state machines to the first address pin. */
 	sm_config_set_in_pins(&sm_config_a15, PIO_A0);
+	sm_config_set_in_pins(&sm_config_ncs, PIO_A0);
 	/* Configure "OUT" pins to the data bus. */
     sm_config_set_out_pins(&sm_config_do, PIO_D0, NUM_DATA_PINS);
-    sm_config_set_out_pins(&sm_config_a15, PIO_D0, NUM_DATA_PINS);
 
     /* Configure "JMP" pins. */
     /* If RD is HIGH, then this JMP instruction will allow the state machine to
      * additionally read the data from the Game Boy. */
     sm_config_set_jmp_pin(&sm_config_a15, PIO_NRD);
+    sm_config_set_jmp_pin(&sm_config_ncs, PIO_NRD);
 
 	/* Set number of bits in RX FIFO. */
-	/* gb_bus_write_data does not use a RX FIFO. */
-	/* TODO: Enable autopush. */
-	sm_config_set_in_shift(&sm_config_a15, true, false, NUM_ADDRESS_PINS);
+	/* TODO: This may only be required for autopush functionality. */
+	sm_config_set_in_shift(&sm_config_a15, true, true, 32);
+	sm_config_set_in_shift(&sm_config_ncs, true, true, 32);
 	/* Set number of bits in TX FIFO. */
-	/* gb_bus_get_address does not use a TX FIFO. */
 	sm_config_set_out_shift(&sm_config_do, true, false, NUM_DATA_PINS);
 
     /* Set clock speed of PIO state machines. */
 	sm_config_set_clkdiv_int_frac(&sm_config_a15, 1, 0);
+	sm_config_set_clkdiv_int_frac(&sm_config_ncs, 1, 0);
 	sm_config_set_clkdiv_int_frac(&sm_config_do,  1, 0);
 
 	/* Set address bus pins as inputs. */
@@ -126,16 +182,20 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_do)
 	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_NRD, 1, false);
 	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_NCS, 1, false);
 	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_A0, NUM_ADDRESS_PINS, false);
-	/* Set data bus pins as inputs. */
+	pio_sm_set_consecutive_pindirs(pio, sm_ncs, PIO_PHI, 1, false);
+	pio_sm_set_consecutive_pindirs(pio, sm_ncs, PIO_NRD, 1, false);
+	pio_sm_set_consecutive_pindirs(pio, sm_ncs, PIO_NCS, 1, false);
+	pio_sm_set_consecutive_pindirs(pio, sm_ncs, PIO_A0, NUM_ADDRESS_PINS, false);
+	/* Set data bus pins as inputs initialy. The sm_do state machine will change
+	 * the pin directions automatically. */
 	pio_sm_set_consecutive_pindirs(pio, sm_do,  PIO_D0, NUM_DATA_PINS, false);
+	pio_sm_set_consecutive_pindirs(pio, sm_do, PIO_DIR, 1, true);
 
 	/* Allow PIO to set D[0-7] GPIO pins output. */
 	for(unsigned pin = PIO_D0; pin <= PIO_D7; pin++)
 		pio_gpio_init(pio, pin);
 
 	pio_gpio_init(pio, PIO_DIR);
-	pio_sm_set_consecutive_pindirs(pio, sm_do, PIO_DIR, 1, true);
-	//gpio_set_dir(PIO_DIR, true);
 
 	/* Set "sideset" configuration to allow DATA_DIR to be changed on each
 	 * instruction for the sm_do state machine. */
@@ -144,6 +204,7 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_do)
 
 	/* Initialise all state machines. */
 	pio_sm_init(pio, sm_a15, gb_bus_get_address_off,  &sm_config_a15);
+	pio_sm_init(pio, sm_ncs, gb_bus_get_cs_off,  &sm_config_ncs);
 	pio_sm_init(pio, sm_do,  gb_bus_write_data_off, &sm_config_do);
 }
 %}
