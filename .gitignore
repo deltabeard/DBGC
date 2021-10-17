@@ -10,7 +10,11 @@ install_manifest.txt
 compile_commands.json
 CTestTestfile.cmake
 _deps
+cmake-build*
 
 ### CMake Patch ###
 # External projects
 *-prefix/
+
+### IDE ###
+.idea
