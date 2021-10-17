@@ -109,11 +109,7 @@ typedef enum {
 #define CRAM_BANK_SIZE  0x2000
 #define CART_RAM_ADDR   0xA000
 
-//#include <rom_4mb.gb.h>
-#include <zelda_la.gb.h>
-#include <ram_test_64kb.gb.h>
-//#include <pkmn_ao.gb.h>
-#include <megaman1.gb.h>
+#include <pokered.gbc.h>
 #include <gb240p.gb.h>
 #include <libbet.gb.h>
 #include <hardware/vreg.h>
@@ -248,36 +244,12 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 		rom_sz = gb240p_gb_len;
 		break;
 
-	case 3:
-		rom = megaman1_gb + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
-		rom_sz = megaman1_gb_len;
-		break;
-
-#if 0
-	case 4:
-		rom = pkmn_ao_gb + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
-		rom_sz = pkmn_ao_gb_len;
-		break;
-#endif
-#if 0
-	case 5:
-		rom = rom_4Mb_gb + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
-		rom_sz = rom_4Mb_gb_len;
-		break;
-#endif
-
-	case 6:
-		rom = ram_64kb_gb + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
-		rom_sz = ram_64kb_gb_len;
-		break;
-
 #if 1
-	case 7:
-		rom = zelda_gb + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
-		rom_sz = zelda_gb_len;
+	case 3:
+		rom = pokered_gbc + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
+		rom_sz = pokered_gbc_len;
 		break;
 #endif
-
 	}
 
 	/* Initialise ROM data. */
@@ -367,6 +339,7 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 			}
 		}
 
+		multicore_fifo_push_blocking(in.raw);
 		address = in.address;
 
 		if(in.is_write)
@@ -393,6 +366,13 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 					if((selected_rom_bank & 0x1F) == 0x00)
 						selected_rom_bank++;
 				}
+				else if(mbc == 3)
+				{
+					selected_rom_bank = data & 0x7F;
+
+					if(!selected_rom_bank)
+						selected_rom_bank++;
+				}
 
 				selected_rom_bank = selected_rom_bank & num_rom_banks_mask;
 
@@ -406,6 +386,8 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 					selected_rom_bank = ((data & 3) << 5) | (selected_rom_bank & 0x1F);
 					selected_rom_bank = selected_rom_bank & num_rom_banks_mask;
 				}
+				else if(mbc == 3)
+					cart_ram_bank = data;
 
 				break;
 
@@ -418,7 +400,10 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 			case 0xB:
 				if(cart_ram && enable_cart_ram)
 				{
-					if(cart_mode_select &&
+					if(mbc == 3 && cart_ram_bank >= 0x08)
+						rtc.cart_rtc[cart_ram_bank -
+						0x08] = data;
+					else if(cart_mode_select &&
 						cart_ram_bank < num_ram_banks)
 					{
 						ram[address - CART_RAM_ADDR + (cart_ram_bank * CRAM_BANK_SIZE)] = data;
@@ -464,7 +449,10 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 		case 0xB:
 			if(cart_ram && enable_cart_ram)
 			{
-				if(cart_mode_select &&
+				if(mbc == 3 && cart_ram_bank >= 0x08)
+					data = rtc.cart_rtc[cart_ram_bank -
+					0x08];
+				else if((cart_mode_select || mbc != 1) &&
 					cart_ram_bank < num_ram_banks)
 				{
 					data = ram[address - CART_RAM_ADDR +
@@ -502,6 +490,15 @@ void __no_inline_not_in_flash_func(func_play)(const char *cmd)
 {
 	static bool started = false;
 	unsigned long game_selection;
+	union {
+		struct {
+			uint16_t address;
+			uint8_t data;
+			uint8_t is_write;
+		};
+		uint32_t raw;
+	} in_stash[8192];
+	unsigned in_i = 0;
 
 	if(started == true)
 	{
@@ -562,6 +559,20 @@ void __no_inline_not_in_flash_func(func_play)(const char *cmd)
 		case MULTICORE_CMD_PLAYING:
 			printf("Playing\n");
 			started = true;
+			while(in_i < ARRAYSIZE(in_stash) &&
+			getchar_timeout_us(0) == PICO_ERROR_TIMEOUT)
+			{
+				in_stash[in_i].raw =
+					multicore_fifo_pop_blocking();
+				in_i++;
+			}
+			for(unsigned i = 0; i < in_i; i++)
+			{
+				printf("%c %04X %02X\t",
+					in_stash[i].is_write != 0 ? 'W' : 'R',
+					in_stash[i].address,
+					in_stash[i].data);
+			}
 			return;
 
 		default:

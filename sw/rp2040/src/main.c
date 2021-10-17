@@ -8,13 +8,13 @@
 #include <pico/bootrom.h>
 #include <pico/multicore.h>
 #include <pico/unique_id.h>
-#include <usb.h>
 #include <tusb.h>
-#include <bsp/board.h>
 
 #include <main.h>
 #include <peripherals/io_expander.h>
 #include <peripherals/rtc.h>
+#include <pico/stdlib.h>
+#include <hardware/vreg.h>
 
 #include "comms.pio.h"
 
@@ -211,7 +211,20 @@ void start_rtc(void)
 
 int main(void)
 {
+	/* Reduce power consumption to stop IO Expander Power-On Reset Errata. */
+	sleep_ms(10);
+
 	/* On init, the RP2040 is running at 125 MHz. */
+	/* Set system clock to 276MHz and flash to 138MHz. */
+	{
+		const unsigned vco = 552000000;
+		const unsigned div1 = 2, div2 = 1;
+
+		vreg_set_voltage(VREG_VOLTAGE_1_15);
+		sleep_ms(10);
+		set_sys_clock_pll(vco, div1, div2);
+		sleep_ms(10);
+	}
 
 	/* Initialise and set I2C baudrate to 400kHz. */
 	i2c_init(i2c0, 400 * 1000);
@@ -224,6 +237,22 @@ int main(void)
 	 * pull-ups connected to these pins for I2C operation. */
 	gpio_disable_pulls(I2C_SDA_PIN);
 	gpio_disable_pulls(I2C_SCL_PIN);
+
+
+	for(unsigned i = PIO_PHI; i <= PIO_A15; i++)
+	{
+		gpio_set_input_enabled(i, true);
+		/* Disable schmitt triggers on GB Bus. The bus transceivers
+		 * already have schmitt triggers. */
+		gpio_set_input_hysteresis_enabled(i, false);
+	}
+
+	for(unsigned i = PIO_PHI; i <= PIO_DIR; i++)
+	{
+		/* Use fast slew rate for GB Bus. */
+		gpio_set_slew_rate(i, GPIO_SLEW_RATE_FAST);
+	}
+
 	/* If the user has held down the button on startup, reset
 	 * to USB Boot mode. Otherwise, turn off LED and hold Game Boy in
 	 * reset. */

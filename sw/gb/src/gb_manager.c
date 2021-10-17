@@ -48,7 +48,12 @@ typedef enum {
 	 * Set a game to play, and reset the game boy. This exists the cart API.
 	 * void play_game(uint8_t game_number)
 	 */
-	CART_CMD_PLAY_GAME = 3
+	CART_CMD_PLAY_GAME = 3,
+
+	/**
+	 * Reboot the DBGC cart into firmware upgrade mode.
+	 */
+	 CART_CMD_UPGRADE = 4
 } cart_cmd_e;
 
 /* Writing to this address sets the parameter for the *next* command.
@@ -61,20 +66,6 @@ typedef enum {
  * from the command are read from this address. */
 #define ADDR_CMD_RET		0x0002
 
-#if 0
-uint8_t enable_dbgc_api(void)
-{
-	const char enable_str[] = {'D', 'B', 'G', 'C', DBGC_API_VER};
-	uint8_t ver;
-
-	for(unsigned i = 0; i < sizeof(enable_str); i++)
-		ver = *(uint8_t*)enable_str[i];
-
-	return ver;
-}
-#endif
-
-#if 1
 #define MENU_SELECT_ITEM(menu, sel)				\
 	do{							\
 		if((sel - 1) < menu->items_nmemb)		\
@@ -135,6 +126,26 @@ inline void menu_set_items(struct menu_ctx *menu, uint8_t nmemb,
 void do_nothing(uint8_t param)
 {
 	(void) param;
+	return;
+}
+
+void reboot_to_usbboot(uint8_t param)
+{
+	(void) param;
+
+	cls();
+	gotoxy(0, 0);
+	puts("USB Firmware Upgrade");
+
+	gotoxy(0, 2);
+	puts("Game Boy is halted.");
+	puts("Do not remove the\n"
+	     "USB cable during\n"
+	     "upgrade.");
+	*(uint8_t *)ADDR_NEW_CMD = CART_CMD_UPGRADE;
+	while(1)
+		__asm__("HALT");
+
 	return;
 }
 
@@ -202,7 +213,7 @@ _Noreturn void menu(void)
 			.name = "Reboot to USBBOOT",
 			.op = MENU_EXEC_FUNC,
 			.param.func_param = 0,
-			.param.func = &do_nothing
+			.param.func = &reboot_to_usbboot
 		}
 	};
 	uint8_t key_prev = 0;
@@ -286,7 +297,6 @@ next:
 		key_prev = key;
 	}
 }
-#endif
 
 void main(void)
 {
