@@ -23,23 +23,36 @@ if(NOT DEFINED ENV{GBDK_C_COMPILER})
     set(ENV{GBDK_C_COMPILER} "$ENV{GBDK_SDK_DIR}/bin/lcc")
 endif()
 
-add_custom_command(OUTPUT gb_manager.gb
-        COMMAND $ENV{GBDK_C_COMPILER}
-        ARGS -Wa-l -Wl-m -Wl-j -Wm-p -Wm-ynGBMGR
-        -I$ENV{GBDK_SDK_DIR}/include
-        -o ${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb sw/gb/src/gb_manager.c
-        WORKING_DIRECTORY ${gb_rp2040_cart_SOURCE_DIR}
-        COMMENT "Compiling GB ROM")
+set(GBDK_LINKER_OPTIONS -Wa-l -Wl-m -Wl-j -Wm-p -Wm-ynGBMGR -Wl-yt0
+        -D_loop_forever_hiram=0xFFA0 -Wl-g_loop_forever_hiram=0xFFA0
+        -D_menu_wram=0xD000 -Wl-g_menu_wram=0xD000)
 add_custom_target(gb_manager ALL
         DEPENDS ${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb
+                ${gb_rp2040_cart_BINARY_DIR}/gb_manager.asm
+                ${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb.h
         SOURCES sw/gb/src/gb_manager.c)
-add_custom_command(TARGET gb_manager
-        POST_BUILD
+add_custom_command(OUTPUT gb_manager.gb
+        COMMAND $ENV{GBDK_C_COMPILER}
+        ARGS ${GBDK_LINKER_OPTIONS} -I$ENV{GBDK_SDK_DIR}/include
+        -o ${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb sw/gb/src/gb_manager.c
+        DEPENDS sw/gb/src/gb_manager.c
+        WORKING_DIRECTORY ${gb_rp2040_cart_SOURCE_DIR}
+        COMMENT "Compiling GB ROM")
+add_custom_command(OUTPUT gb_manager.asm
+        COMMAND $ENV{GBDK_C_COMPILER}
+        ARGS -S ${GBDK_LINKER_OPTIONS} -I$ENV{GBDK_SDK_DIR}/include
+        -o ${gb_rp2040_cart_BINARY_DIR}/gb_manager.asm sw/gb/src/gb_manager.c
+        DEPENDS sw/gb/src/gb_manager.c
+        WORKING_DIRECTORY ${gb_rp2040_cart_SOURCE_DIR}
+        COMMENT "Compiling GB ROM to assembly")
+add_custom_command(OUTPUT gb_manager.gb.h
+        PRE_BUILD
         COMMAND ${CMAKE_COMMAND}
             -DSOURCE_FILE="${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb"
             -DOUTPUT_FILE="${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb.h"
             -DVARIABLE_NAME="gb_manager_rom"
             -P ${CMAKE_SOURCE_DIR}/gb2header.cmake
+        DEPENDS ${gb_rp2040_cart_BINARY_DIR}/gb_manager.gb
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         COMMENT "Converting GB ROM to header file")
 
