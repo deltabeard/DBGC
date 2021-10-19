@@ -328,18 +328,14 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 			{
 				in.raw = *rx_sm_ncs;
 
-#if 1
 				/* Catch invalid addresses here. */
-				if(in.address < 0xA000 ||
-						in.address > 0xBFFF)
+				if(in.address < 0xA000 || in.address > 0xBFFF)
 					continue;
-#endif
 
 				break;
 			}
 		}
 
-		multicore_fifo_push_blocking(in.raw);
 		address = in.address;
 
 		if(in.is_write)
@@ -347,6 +343,8 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 			/* If we need to write data to ROM, then we obtain the
 			 * data byte from the third byte of the RX FIFO. */
 			data = in.data;
+
+			multicore_fifo_push_blocking(in.raw);
 
 			switch(address >> 12)
 			{
@@ -475,6 +473,9 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 		}
 
 		*tx_sm_do = data;
+
+		in.data = data;
+		multicore_fifo_push_blocking(in.raw);
 	}
 }
 
@@ -491,13 +492,13 @@ void __no_inline_not_in_flash_func(func_play)(const char *cmd)
 	static bool started = false;
 	unsigned long game_selection;
 	union {
-		struct {
+		struct __attribute__ ((__packed__)) {
 			uint16_t address;
 			uint8_t data;
 			uint8_t is_write;
 		};
 		uint32_t raw;
-	} in_stash[8192];
+	} in_stash[1024];
 	unsigned in_i = 0;
 
 	if(started == true)
@@ -560,16 +561,20 @@ void __no_inline_not_in_flash_func(func_play)(const char *cmd)
 			printf("Playing\n");
 			started = true;
 			while(in_i < ARRAYSIZE(in_stash) &&
-			getchar_timeout_us(0) == PICO_ERROR_TIMEOUT)
+					getchar_timeout_us(0) != 'q')
 			{
-				in_stash[in_i].raw =
-					multicore_fifo_pop_blocking();
+				bool popped;
+				popped = multicore_fifo_pop_timeout_us(10,
+					&in_stash[in_i].raw);
+				if(popped == false)
+					continue;
+
 				in_i++;
 			}
 			for(unsigned i = 0; i < in_i; i++)
 			{
 				printf("%c %04X %02X\t",
-					in_stash[i].is_write != 0 ? 'W' : 'R',
+					in_stash[i].is_write ? 'W' : 'R',
 					in_stash[i].address,
 					in_stash[i].data);
 			}

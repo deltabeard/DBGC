@@ -2,10 +2,10 @@
 ;
 ; SM83/8080 bus communication for the Nintendo Game Boy.
 
-.define PHI         2
-.define NRD         3
-.define NCS         4
-.define A15         20
+.define PHI		2
+.define NRD		3
+.define NCS		4
+.define A15		20
 
 ;; Read address from GB bus for ROM reads and writes
 .program gb_bus_get_address
@@ -13,43 +13,43 @@ gb_bus_get_address_start:
 ;	Wait for a ROM read/write instruction.
 	wait 0 GPIO A15
 
-;   Jump if a data read is requested.
-	jmp PIN gb_bus_read_data
+;	Jump if a data read is requested.
+	jmp PIN gb_bus_write_data
 
 ;	Read address into ISR.
 	in PINS, 16
 
-;   No data is to be read, so push address to LSB and zero data byte.
+;	No data is to be read, so push address to LSB and zero data byte.
 	in NULL, 16
 
 ;	Push address from ISR to RX FIFO
 ;	push noblock
 
-;   Wait for low edge of PHI, before checking for next instruction.
-    wait 0 GPIO PHI
+;	Wait for low edge of PHI, before checking for next instruction.
+	wait 0 GPIO PHI
 
 gb_bus_next_instr:
 ;	Wait for next instruction
-    wait 1 GPIO PHI
+	wait 1 GPIO PHI
 .wrap
 
-gb_bus_read_data:
-;   Wait for data to become ready. Delay 2 cycles to be sure.
-    wait 0 GPIO PHI [2]
+gb_bus_write_data:
+;	Wait for data to become ready. Delay 2 cycles to be sure.
+	wait 0 GPIO PHI [2]
 
-;   Fill the X register with ones.
-    mov X, ~null
+;	Fill the X register with ones.
+	mov X, ~null
 
-;   Read address and data into ISR.
-    in PINS, 24
+;	Read address and data into ISR.
+	in PINS, 24
 
-;   Shift the address and data to LSB, and fill the MSB byte with ones.
-    in X, 8
+;	Shift the address and data to LSB, and fill the MSB byte with ones.
+	in X, 8
 
 ;	Push address, data, and write flag from ISR to RX FIFO
 ;	push noblock
 
-    jmp gb_bus_next_instr
+	jmp gb_bus_next_instr
 ; End
 
 ;; Read address from GB bus for RAM reads and writes
@@ -59,43 +59,43 @@ gb_bus_get_cs_start:
 ;	Wait for a RAM read/write instruction.
 	wait 0 GPIO NCS
 
-;   Jump if a data read is requested.
-	jmp PIN gb_bus_read_data
+;	Jump if a data write is requested.
+	jmp PIN gb_bus_write_data
 
 ;	Read address into ISR.
 	in PINS, 16
 
-;   No data is to be read, so push address to LSB and zero data byte.
+;	No data is to be read, so push address to LSB and zero data byte.
 	in NULL, 16
 
 ;	Push address from ISR to RX FIFO
 ;	push noblock
 
-;   Wait for low edge of PHI, before checking for next instruction.
-    wait 0 GPIO PHI
+;	Wait for low edge of PHI, before checking for next instruction.
+	wait 0 GPIO PHI
 
 gb_bus_next_instr:
 ;	Wait for next instruction
-    wait 1 GPIO PHI
+	wait 1 GPIO PHI
 .wrap
 
-gb_bus_read_data:
-;   Wait for data to become ready. Delay 2 cycles to be sure.
-    wait 0 GPIO PHI [2]
+gb_bus_write_data:
+;	Wait for data to become ready. Delay 2 cycles to be sure.
+	wait 0 GPIO PHI [2]
 
-;   Fill the X register with ones.
-    mov X, ~null
+;	Fill the X register with ones.
+	mov X, ~null
 
-;   Read address and data into ISR.
-    in PINS, 24
+;	Read address and data into ISR.
+	in PINS, 24
 
-;   Shift the address and data to LSB, and fill the MSB byte with ones.
-    in X, 8
+;	Shift the address and data to LSB, and fill the MSB byte with ones.
+	in X, 8
 
 ;	Push address, data, and write flag from ISR to RX FIFO
 ;	push noblock
 
-    jmp gb_bus_next_instr
+	jmp gb_bus_next_instr
 ; End
 
 ;; Send data to the Game Boy. This is done when the Game Boy is performing a
@@ -108,28 +108,28 @@ gb_bus_read_data:
 public gb_bus_write_data:
 ;	Pull data from TX FIFO to OSR
 ;	This is not required if autopull is enabled
-;   Side: Return control of the data bus to the Game Boy.
-	pull ifempty block  side 0
+;	Side: Return control of the data bus to the Game Boy.
+	pull ifempty block	side 0
 
 ;	Output data from OSR to data pins
-	out PINS, 8         side 0
+	out PINS, 8		side 0
 
 ;	Set Data pins to OUTPUT.
 ;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
-    mov osr, ~null	side 0  ; Set OSR to all ones
-    out pindirs, 8	side 1  ; Output ones to data pindirs
-    						; Side: set DATA_DIR to RP2040 -> GB (B -> A)
+	mov osr, ~null	side 0  ; Set OSR to all ones
+	out pindirs, 8	side 1  ; Output ones to data pindirs
+				; Side: set DATA_DIR to RP2040 -> GB (B -> A)
 
 ;	Keep data output active until new clock cycle.
-;   Side: Stay in control of the data bus.
-    wait 0 GPIO PHI     side 1
-	wait 1 GPIO PHI     side 1
+;	Side: Stay in control of the data bus.
+	wait 0 GPIO PHI	 side 1
+	wait 1 GPIO PHI	 side 1
 
 ;	Set Data pins to INPUT.
 ;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
-    mov osr, null	side 0  ; Set OSR to all zeros
-    out pindirs, 8	side 0  ; Output ones to data pindirs
-    						; Side: set DATA_DIR to GB -> RP2040 (A -> B)
+	mov osr, null	side 0  ; Set OSR to all zeros
+	out pindirs, 8	side 0  ; Output ones to data pindirs
+				; Side: set DATA_DIR to GB -> RP2040 (A -> B)
 
 ;	Wait for next data output
 .wrap
@@ -138,7 +138,7 @@ public gb_bus_write_data:
 #include <verify.h>
 
 void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_ncs,
-        unsigned sm_do)
+		unsigned sm_do)
 {
 	pio_sm_config sm_config_a15, sm_config_ncs, sm_config_do;
 	uint gb_bus_get_address_off, gb_bus_get_cs_off, gb_bus_write_data_off;
@@ -157,13 +157,13 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_ncs,
 	sm_config_set_in_pins(&sm_config_a15, PIO_A0);
 	sm_config_set_in_pins(&sm_config_ncs, PIO_A0);
 	/* Configure "OUT" pins to the data bus. */
-    sm_config_set_out_pins(&sm_config_do, PIO_D0, NUM_DATA_PINS);
+	sm_config_set_out_pins(&sm_config_do, PIO_D0, NUM_DATA_PINS);
 
-    /* Configure "JMP" pins. */
-    /* If RD is HIGH, then this JMP instruction will allow the state machine to
-     * additionally read the data from the Game Boy. */
-    sm_config_set_jmp_pin(&sm_config_a15, PIO_NRD);
-    sm_config_set_jmp_pin(&sm_config_ncs, PIO_NRD);
+	/* Configure "JMP" pins. */
+	/* If RD is HIGH, then this JMP instruction will allow the state machine to
+	 * additionally read the data from the Game Boy. */
+	sm_config_set_jmp_pin(&sm_config_a15, PIO_NRD);
+	sm_config_set_jmp_pin(&sm_config_ncs, PIO_NRD);
 
 	/* Set number of bits in RX FIFO. */
 	/* TODO: This may only be required for autopush functionality. */
@@ -172,7 +172,7 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_ncs,
 	/* Set number of bits in TX FIFO. */
 	sm_config_set_out_shift(&sm_config_do, true, false, NUM_DATA_PINS);
 
-    /* Set clock speed of PIO state machines. */
+	/* Set clock speed of PIO state machines. */
 	sm_config_set_clkdiv_int_frac(&sm_config_a15, 1, 0);
 	sm_config_set_clkdiv_int_frac(&sm_config_ncs, 1, 0);
 	sm_config_set_clkdiv_int_frac(&sm_config_do,  1, 0);

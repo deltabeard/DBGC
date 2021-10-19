@@ -31,11 +31,34 @@
 #define PICO_DEFAULT_I2C_SCL_PIN 1
 #endif
 
+#define I2C_PCA9536_ADDR 0b01000001
+#define I2C_DS3231M_ADDR 0b01101000
+
+// --- PIO ---
+#define PIO_PHI			2
+#define PIO_NRD			3
+#define PIO_NCS			4
+#define PIO_A0			5
+#define PIO_A15			20
+#define PIO_D0			21
+#define PIO_D7			28
+#define PIO_DIR			29
+#define NUM_ADDRESS_PINS	16
+#define NUM_DATA_PINS		8
+#define NUM_MISC_PINS		3
+#define NUM_TOTAL_PINS (NUM_ADDRESS_PINS + NUM_DATA_PINS + NUM_MISC_PINS)
+
+// PIO: Static state machine configuration.
+#define PIO_SM_A15	0
+#define PIO_SM_NCS	1
+#define PIO_SM_DO	2
+
+
 // --- FLASH ---
-#define PICO_BOOT_STAGE2_CHOOSE_W25X10CL 1
+#define PICO_BOOT_STAGE2_CHOOSE_W25Q080 1
 
 #ifndef PICO_FLASH_SPI_CLKDIV
-#define PICO_FLASH_SPI_CLKDIV 16
+#define PICO_FLASH_SPI_CLKDIV 2
 #endif
 
 #ifndef PICO_FLASH_SIZE_BYTES

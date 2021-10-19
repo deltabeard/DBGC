@@ -29,17 +29,19 @@ add_executable(dbgc_impl src/impl.c)
 target_include_directories(dbgc_impl PRIVATE inc)
 pico_generate_pio_header(dbgc_impl ${CMAKE_SOURCE_DIR}/src/comms.pio)
 target_compile_definitions(dbgc_impl PRIVATE
-        PICO_STDIO_ENABLE_CRLF_SUPPORT=0
-        PICO_STDIO_DEFAULT_CRLF=0
-        PARAM_ASSERTIONS_DISABLE_ALL=1
-        CFG_TUSB_DEBUG=0)
+        PARAM_ASSERTIONS_DISABLE_ALL=1)
 target_link_libraries(dbgc_impl
-        pico_stdlib pico_stdio pico_bootrom
-        hardware_clocks hardware_vreg hardware_i2c hardware_pio
-        pico_binary_info)
+        pico_stdlib pico_bootrom pico_multicore
+        hardware_clocks hardware_pll hardware_vreg hardware_i2c hardware_pio)
 
-pico_enable_stdio_usb(dbgc_impl 1)
+pico_enable_stdio_usb(dbgc_impl 0)
 pico_enable_stdio_uart(dbgc_impl 0)
 
-# create map/bin/hex/uf2 file in addition to ELF.
-pico_add_extra_outputs(dbgc_impl)
+pico_add_uf2_output(dbgc_impl)
+function(pico_add_verbose_dis_output TARGET)
+    add_custom_command(TARGET ${TARGET} POST_BUILD
+            COMMAND ${CMAKE_OBJDUMP} -h $<TARGET_FILE:${TARGET}> >$<IF:$<BOOL:$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>>,$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>,$<TARGET_PROPERTY:${TARGET},NAME>>.dis
+            COMMAND ${CMAKE_OBJDUMP} -drwCSl $<TARGET_FILE:${TARGET}> >>$<IF:$<BOOL:$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>>,$<TARGET_PROPERTY:${TARGET},OUTPUT_NAME>,$<TARGET_PROPERTY:${TARGET},NAME>>.dis
+            )
+endfunction()
+pico_add_verbose_dis_output(dbgc_impl)
