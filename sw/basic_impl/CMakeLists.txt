@@ -29,14 +29,18 @@ add_executable(dbgc_impl src/impl.c)
 target_include_directories(dbgc_impl PRIVATE inc)
 pico_generate_pio_header(dbgc_impl ${CMAKE_SOURCE_DIR}/src/comms.pio)
 target_compile_definitions(dbgc_impl PRIVATE
-        PARAM_ASSERTIONS_DISABLE_ALL=1)
+        PARAM_ASSERTIONS_DISABLE_ALL=1
+        PICO_ENTER_USB_BOOT_ON_EXIT=1
+        PICO_PANIC_FUNCTION=dbgc_panic)
 target_link_libraries(dbgc_impl
         pico_stdlib pico_bootrom pico_multicore
+        pico_bootsel_via_double_reset
         hardware_clocks hardware_pll hardware_vreg hardware_i2c hardware_pio)
 
 pico_enable_stdio_usb(dbgc_impl 0)
 pico_enable_stdio_uart(dbgc_impl 0)
 
+pico_add_bin_output(dbgc_impl)
 pico_add_uf2_output(dbgc_impl)
 function(pico_add_verbose_dis_output TARGET)
     add_custom_command(TARGET ${TARGET} POST_BUILD

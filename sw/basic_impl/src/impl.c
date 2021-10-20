@@ -124,12 +124,13 @@ union cart_rtc
 
 
 const uint8_t *roms[] = {
-	libbet_gb, pokered_gbc
+	libbet_gb,
+	//pokered_gbc
 };
 
-_Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void);
+_Noreturn void __not_in_flash_func(play_mgmt_rom)(void);
 
-_Noreturn void __no_inline_not_in_flash_func(play_rom_only)(const uint8_t *rom)
+_Noreturn void __not_in_flash_func(play_rom_only)(const uint8_t *rom)
 {
 	while(1)
 	{
@@ -148,7 +149,7 @@ _Noreturn void __no_inline_not_in_flash_func(play_rom_only)(const uint8_t *rom)
 	}
 }
 
-_Noreturn void __no_inline_not_in_flash_func(play_mbc1_rom)(
+_Noreturn void __not_in_flash_func(play_mbc1_rom)(
 		const uint8_t *const rom, uint8_t *const ram,
 		uint16_t num_rom_banks_mask, uint8_t num_ram_banks)
 {
@@ -299,8 +300,7 @@ _Noreturn void __no_inline_not_in_flash_func(play_mbc1_rom)(
 	}
 }
 
-
-_Noreturn void __no_inline_not_in_flash_func(play_mbc3_rom)(
+_Noreturn void __not_in_flash_func(play_mbc3_rom)(
 	const uint8_t *const rom, uint8_t *const ram,
 	uint16_t num_rom_banks_mask, uint8_t num_ram_banks)
 {
@@ -466,39 +466,36 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 	const uint16_t mbc_location = 0x0147;
 	const uint16_t bank_count_location = 0x0148;
 	const uint16_t ram_size_location = 0x0149;
+	const uint8_t cart_mbc_lut[0xFF] = {
+		/* ROM Only */
+		[0x00] = 0,
 
-	const uint8_t cart_mbc_lut[0xFF] =
-		{
-			/* ROM Only */
-			[0x00] = 0,
+		/* MBC1 */
+		[0x01] = 1, 1, 1,
+		[0x04] = -1,
 
-			/* MBC1 */
-			[0x01] = 1, 1, 1,
-			[0x04] = -1,
+		/* MBC2 */
+		[0x05] = 2, 2,
+		[0x07] = -1,
 
-			/* MBC2 */
-			[0x05] = 2, 2,
-			[0x07] = -1,
+		/* ROM with RAM (Unsupported) */
+		[0x08] = -1, -1,
+		[0x0A] = -1,
 
-			/* ROM with RAM (Unsupported) */
-			[0x08] = -1, -1,
-			[0x0A] = -1,
+		/* MMM01 (Unsupported) */
+		[0x0B] = -1, -1, -1,
+		[0x0E] = -1,
 
-			/* MMM01 (Unsupported) */
-			[0x0B] = -1, -1, -1,
-			[0x0E] = -1,
+		/* MBC3 */
+		[0x0F] = 3, 3, 3, 3, 3,
 
-			/* MBC3 */
-			[0x0F] = 3, 3, 3, 3, 3,
-
-			/* Everything else is unsupported for now. */
-			[0x14] = -1
-		};
-	const uint16_t num_rom_banks_lut[] =
-		{
-			2, 4, 8, 16, 32, 64, 128, 256, 512
-		};
-	const uint8_t num_ram_banks_lut[] = {0, 1, 1, 4, 16, 8};
+		/* Everything else is unsupported for now. */
+		[0x14] = -1
+	};
+	const uint16_t num_rom_banks_lut[] = {
+		2, 4, 8, 16, 32, 64, 128, 256, 512
+	};
+	const uint8_t num_ram_banks_lut[] = { 0, 1, 1, 4, 16, 8 };
 	/* Cartridge information:
 	 * Memory Bank Controller (MBC) type. */
 	uint8_t mbc;
@@ -506,11 +503,12 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 	uint16_t num_rom_banks_mask;
 	/* Number of RAM banks in cartridge. */
 	uint8_t num_ram_banks;
-
+	/* Pointer to cart RAM data that is allocated on the heap. */
 	unsigned char *ram = NULL;
 	unsigned ram_sz;
 
-
+	/* The Game Boy is held in reset again because the selected game may
+	 * change the mode that the Game Boy has to boot in. */
 	gb_power(GB_POWER_OFF);
 
 	/* Initialise ROM data. */
@@ -536,8 +534,13 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 		num_rom_banks_mask = num_rom_banks_lut[rom[bank_count_location]] - 1;
 	}
 
-	sleep_ms(8);
+	sleep_ms(128);
 	gb_power(GB_POWER_ON);
+
+	/* Disable XIP Cache.
+	 * This is done after using I2C, as that is read from flash by the
+	 * pico-sdk. */
+	xip_ctrl_hw->ctrl &= ~XIP_CTRL_EN_BITS;
 
 	switch(mbc)
 	{
@@ -574,10 +577,6 @@ _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 	/* ROM only game does not use cart RAM. */
 	pio_sm_set_enabled(pio0, PIO_SM_NCS, false);
 
-	gb_power(GB_POWER_OFF);
-	sleep_ms(8);
-	gb_power(GB_POWER_ON);
-
 	while(1)
 	{
 		/* Only read the address, which is stored in the most
@@ -589,27 +588,6 @@ _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 
 		/* Wait until we receive a new address. */
 		while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15));
-
-#if 0
-		{
-			if(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15) == false)
-			{
-
-				break;
-			}
-			else if(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_NCS) ==
-			false)
-			{
-				rx.raw = *rx_sm_ncs;
-
-				/* Catch invalid addresses here. */
-				if(rx.address < 0xA000 || rx.address > 0xBFFF)
-					continue;
-
-				break;
-			}
-		}
-#endif
 
 		/* Only reads are expected in a non-banked ROM. */
 		rx.raw = *rx_sm_a15;
@@ -703,9 +681,6 @@ _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 
 void core1_main(void)
 {
-	/* Disable XIP Cache. */
-	xip_ctrl_hw->ctrl &= ~XIP_CTRL_EN_BITS;
-
 	play_mgmt_rom();
 }
 
@@ -731,36 +706,20 @@ void __no_inline_not_in_flash_func(loop_forever)(void)
 
 void begin_playing(void)
 {
-	/* Disable interrupts on this core. */
+	/* Disable interrupts on this core.
+	 * There should not be any interrupts running on this core anyway. */
 	__asm volatile ("cpsid i");
 
 	/* Grant high bus priority to the second core. */
+	/* FIXME: this may not be the correct register. */
 	bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_PROC1_BITS;
 
 	multicore_launch_core1(core1_main);
 }
 
-bool is_gameboy_connected(void)
+void __no_inline_not_in_flash_func(dbgc_panic)(void)
 {
-	bool is_connected = false;
-
-	gb_power(GB_POWER_ON);
-
-	/* Wait for Game Boy to start reading from ROM. */
-	sleep_ms(64);
-
-	/* If the Game Boy has attempted to read from ROM, then we know that
-	 * it's connected. */
-	is_connected = pio_sm_is_rx_fifo_full(pio0, PIO_SM_A15);
-	gb_power(GB_POWER_OFF);
-
-	/* Clear the A15 state machine RX fifo. the NCS state machine is
-	 * expected to be empty, since the Game Boy bootrom only reads from
-	 * Bank 0. */
-	while(pio_sm_get_rx_fifo_level(pio0, PIO_SM_A15))
-		UNUSED(pio_sm_get(pio0, PIO_SM_A15));
-
-	return is_connected;
+	reset_usb_boot(0, 0);
 }
 
 int main(void)
@@ -783,15 +742,16 @@ int main(void)
 
 	init_gpio_pins();
 
+	/* The IO expander is required for the cart to work, as it must be
+	 * use to pull the Game Boy out of reset. */
 	if(init_i2c_peripherals() < 0)
 		goto err;
 
+	/* After initialising the IO expander, ensure that the Game Boy is held
+	 * in reset. */
 	gb_power(GB_POWER_OFF);
+
 	init_pio();
-
-	if(is_gameboy_connected() == false)
-		goto err;
-
 	begin_playing();
 	loop_forever();
 
