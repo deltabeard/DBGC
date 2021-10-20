@@ -123,13 +123,31 @@ inline void menu_set_items(struct menu_ctx *menu, uint8_t nmemb,
 	menu->items = items;
 }
 
+void loop_forever(void)
+{
+	*(uint8_t *)ADDR_NEW_CMD = CART_CMD_UPGRADE;
+	while(1)
+		__asm__("HALT");
+}
+void loop_forever_end(void) {}
+unsigned char __at _loop_forever_ram ram_buffer[];
+extern void loop_forever_ram();
+#define object_distance(a, b) ((void *)&(b) - (void *)&(a))
+
+void play_game(uint8_t param)
+{
+	*(uint8_t *)ADDR_CMD_PARAM = param;
+	*(uint8_t *)ADDR_NEW_CMD = CART_CMD_PLAY_GAME;
+	loop_forever_ram();
+}
+
 void do_nothing(uint8_t param)
 {
 	(void) param;
 	return;
 }
 
-void reboot_to_usbboot(uint8_t param)
+_Noreturn void reboot_to_usbboot(uint8_t param)
 {
 	(void) param;
 
@@ -142,11 +160,8 @@ void reboot_to_usbboot(uint8_t param)
 	puts("Do not remove the\n"
 	     "USB cable during\n"
 	     "upgrade.");
-	*(uint8_t *)ADDR_NEW_CMD = CART_CMD_UPGRADE;
-	while(1)
-		__asm__("HALT");
-
-	return;
+	wait_vbl_done();
+	loop_forever_ram();
 }
 
 void draw_menu(struct menu_ctx *current, uint8_t item_selected)
@@ -179,7 +194,7 @@ uint8_t fill_play_items(struct menu_item *play_items, uint8_t max_items)
 		char *name = &play_items[i].name[0];
 		play_items[i].op = MENU_EXEC_FUNC;
 		play_items[i].param.func_param = i;
-		play_items[i].param.func = &do_nothing;
+		play_items[i].param.func = &play_game;
 
 		*(uint8_t *)ADDR_CMD_PARAM = i;
 		*(uint8_t *)ADDR_NEW_CMD = CART_CMD_GET_GAME_NAME;
@@ -201,7 +216,7 @@ uint8_t fill_play_items(struct menu_item *play_items, uint8_t max_items)
 _Noreturn void menu(void)
 {
 	struct menu_ctx play, menu;
-	struct menu_ctx *current = &play;
+	struct menu_ctx *current = &menu;
 	struct menu_item play_items[32];
 	struct menu_item root_items[] = {
 		{
@@ -301,6 +316,9 @@ next:
 void main(void)
 {
 	font_t font;
+
+	memcpy(&ram_buffer, (void *)&loop_forever,
+			(uint16_t)object_distance(loop_forever, loop_forever_end));
 
 	/* First, init the font system */
 	font_init();

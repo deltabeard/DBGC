@@ -26,8 +26,8 @@ typedef enum {
 } io_exp_reg_e;
 
 typedef enum {
-	GB_POWER_ON = 0,
-	GB_POWER_OFF = 1
+	GB_POWER_OFF = 0,
+	GB_POWER_ON = 1
 } gb_pwr_e;
 
 void gb_power(gb_pwr_e pwr)
@@ -572,7 +572,7 @@ _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 {
 	union gb_bus_rx rx = { .raw = 0 };
 	struct gb_mgmt_ctx mgmt = { 0 };
-	const uint8_t *rom = gb_manager_rom;
+	const uint8_t *rom = gb_manager_gb;
 
 	/* ROM only game does not use cart RAM. */
 	pio_sm_set_enabled(pio0, PIO_SM_NCS, false);
