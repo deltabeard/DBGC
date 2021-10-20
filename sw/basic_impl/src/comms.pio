@@ -22,7 +22,7 @@ gb_bus_get_address_start:
 ;	No data is to be read, so push address to LSB and zero data byte.
 	in NULL, 16
 
-;	Push address from ISR to RX FIFO
+;	Autopush: Push address from ISR to RX FIFO
 ;	push noblock
 
 ;	Wait for low edge of PHI, before checking for next instruction.
@@ -34,11 +34,11 @@ gb_bus_next_instr:
 .wrap
 
 gb_bus_write_data:
-;	Wait for data to become ready. Delay 2 cycles to be sure.
-	wait 0 GPIO PHI [2]
-
 ;	Fill the X register with ones.
 	mov X, ~null
+
+;	Wait for data to become ready. Delay 2 cycles to be sure.
+	wait 0 GPIO PHI [2]
 
 ;	Read address and data into ISR.
 	in PINS, 24
@@ -46,7 +46,7 @@ gb_bus_write_data:
 ;	Shift the address and data to LSB, and fill the MSB byte with ones.
 	in X, 8
 
-;	Push address, data, and write flag from ISR to RX FIFO
+;	Autopush: Push address, data, and write flag from ISR to RX FIFO
 ;	push noblock
 
 	jmp gb_bus_next_instr
@@ -68,7 +68,7 @@ gb_bus_get_cs_start:
 ;	No data is to be read, so push address to LSB and zero data byte.
 	in NULL, 16
 
-;	Push address from ISR to RX FIFO
+;	Autopush: Push address from ISR to RX FIFO
 ;	push noblock
 
 ;	Wait for low edge of PHI, before checking for next instruction.
@@ -80,11 +80,11 @@ gb_bus_next_instr:
 .wrap
 
 gb_bus_write_data:
-;	Wait for data to become ready. Delay 2 cycles to be sure.
-	wait 0 GPIO PHI [2]
-
 ;	Fill the X register with ones.
 	mov X, ~null
+
+;	Wait for data to become ready. Delay 2 cycles to be sure.
+	wait 0 GPIO PHI [2]
 
 ;	Read address and data into ISR.
 	in PINS, 24
@@ -92,7 +92,7 @@ gb_bus_write_data:
 ;	Shift the address and data to LSB, and fill the MSB byte with ones.
 	in X, 8
 
-;	Push address, data, and write flag from ISR to RX FIFO
+;	Autopush: Push address, data, and write flag from ISR to RX FIFO
 ;	push noblock
 
 	jmp gb_bus_next_instr
@@ -109,10 +109,10 @@ public gb_bus_write_data:
 ;	Pull data from TX FIFO to OSR
 ;	This is not required if autopull is enabled
 ;	Side: Return control of the data bus to the Game Boy.
-	pull ifempty block	side 0
+	pull ifempty block side 0
 
 ;	Output data from OSR to data pins
-	out PINS, 8		side 0
+	out PINS, 8	side 0
 
 ;	Set Data pins to OUTPUT.
 ;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
