@@ -16,6 +16,7 @@
 /* ROMs */
 #include <gb_manager.gb.h>
 #include <libbet.gb.h>
+#include <2048.gb.h>
 
 typedef enum {
 	IO_EXP_INPUT_PORT = 0,
@@ -124,6 +125,7 @@ union cart_rtc
 
 const uint8_t *roms[] = {
 	libbet_gb,
+	__2048_gb
 	//pokered_gbc
 };
 
@@ -533,7 +535,7 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 		num_rom_banks_mask = num_rom_banks_lut[rom[bank_count_location]] - 1;
 	}
 
-	sleep_ms(128);
+	sleep_ms(16);
 	gb_power(GB_POWER_ON);
 
 	/* Disable XIP Cache.
@@ -561,6 +563,63 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 
 err:
 	play_mgmt_rom();
+}
+
+ALWAYS_INLINE
+static void handle_mgmt_write(struct gb_mgmt_ctx *mgmt, uint16_t address,
+	uint8_t data)
+{
+	switch(address)
+	{
+	case ADDR_NEW_CMD:
+		mgmt->cmd = data;
+		switch(mgmt->cmd)
+		{
+		case CART_CMD_NOP:
+			mgmt->ret = 0;
+			mgmt->param = 0;
+			break;
+
+		case CART_CMD_GET_NUMBER_OF_GAMES:
+			mgmt->ret = ARRAYSIZE(roms);
+			break;
+
+		case CART_CMD_GET_GAME_NAME:
+			mgmt->ctx.game_name.rom = roms[mgmt->param];
+			/* Find length of ROM title. */
+			if(mgmt->ctx.game_name.rom[ROM_OLD_LICENSE_LOC] == 0x33)
+				mgmt->ctx.game_name.remaining_length = 10;
+			else
+				mgmt->ctx.game_name.remaining_length = 14;
+
+			mgmt->ctx.game_name.rom =
+				&roms[mgmt->param][ROM_TITLE_LOC];
+			mgmt->ret = *(mgmt->ctx.game_name.rom++);
+			break;
+
+		case CART_CMD_PLAY_GAME:
+			if(mgmt->param < ARRAYSIZE(roms))
+			{
+				check_and_play_rom(roms[mgmt->param]);
+				UNREACHABLE();
+			}
+			break;
+
+		case CART_CMD_UPGRADE:
+			reset_usb_boot(0, 0);
+			UNREACHABLE();
+		}
+		break;
+
+	case ADDR_CMD_PARAM:
+		mgmt->param = data;
+		break;
+
+	default:
+	case ADDR_CMD_RET:
+		/* Not a valid write. */
+		break;
+	}
 }
 
 /**
@@ -595,61 +654,7 @@ _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 		if(UNLIKELY(rx.is_write))
 		{
 			data = rx.data;
-			switch(address)
-			{
-			case ADDR_NEW_CMD:
-				mgmt.cmd = data;
-				switch(mgmt.cmd)
-				{
-				case CART_CMD_NOP:
-					mgmt.ret = 0;
-					mgmt.param = 0;
-					break;
-
-				case CART_CMD_GET_NUMBER_OF_GAMES:
-					mgmt.ret = ARRAYSIZE(roms);
-					break;
-
-				case CART_CMD_GET_GAME_NAME:
-					mgmt.ctx.game_name.rom =
-						roms[mgmt.param];
-					/* Find length of ROM title. */
-					if(mgmt.ctx.game_name.rom[ROM_OLD_LICENSE_LOC] == 0x33)
-						mgmt.ctx.game_name
-						.remaining_length = 11;
-					else
-						mgmt.ctx.game_name.remaining_length =
-							15;
-
-					mgmt.ctx.game_name.rom =
-						&rom[ROM_TITLE_LOC];
-					mgmt.ret = *(mgmt.ctx.game_name.rom++);
-					break;
-
-				case CART_CMD_PLAY_GAME:
-					if(mgmt.param < ARRAYSIZE(roms))
-					{
-						check_and_play_rom(roms[mgmt.param]);
-						UNREACHABLE();
-					}
-					break;
-
-				case CART_CMD_UPGRADE:
-					reset_usb_boot(0, 0);
-					UNREACHABLE();
-				}
-				break;
-
-			case ADDR_CMD_PARAM:
-				mgmt.param = data;
-				break;
-
-			default:
-			case ADDR_CMD_RET:
-				/* Not a valid write. */
-				break;
-			}
-
+			handle_mgmt_write(&mgmt, address, data);
 			continue;
 		}
 

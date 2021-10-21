@@ -125,7 +125,6 @@ inline void menu_set_items(struct menu_ctx *menu, uint8_t nmemb,
 
 void loop_forever(void)
 {
-	*(uint8_t *)ADDR_NEW_CMD = CART_CMD_UPGRADE;
 	while(1)
 		__asm__("HALT");
 }
@@ -136,6 +135,8 @@ extern void loop_forever_ram();
 
 void play_game(uint8_t param)
 {
+	disable_interrupts();
+	
 	*(uint8_t *)ADDR_CMD_PARAM = param;
 	*(uint8_t *)ADDR_NEW_CMD = CART_CMD_PLAY_GAME;
 	loop_forever_ram();
@@ -161,6 +162,9 @@ _Noreturn void reboot_to_usbboot(uint8_t param)
 	     "USB cable during\n"
 	     "upgrade.");
 	wait_vbl_done();
+	disable_interrupts();
+	
+	*(uint8_t *)ADDR_NEW_CMD = CART_CMD_UPGRADE;
 	loop_forever_ram();
 }
 

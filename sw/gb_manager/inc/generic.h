@@ -8,3 +8,5 @@
 #define LIKELY(expr)	__builtin_expect(!!(expr), 1)
 #define UNLIKELY(expr)	__builtin_expect(!!(expr), 0)
 #define UNREACHABLE()	__builtin_unreachable()
+#define INLINE		__inline__
+#define ALWAYS_INLINE	__attribute__((__always_inline__)) INLINE
