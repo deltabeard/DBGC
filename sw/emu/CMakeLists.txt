@@ -13,8 +13,6 @@ SET(LIBRARY_DISCOVER_METHOD "PKG_CONFIG" CACHE STRING
 IF(MSVC)
     # MSVC typically does not have pkg-config, but MSYS2/MinGW might.
     SET(LIBRARY_DISCOVER_METHOD "CPM")
-    # Create a GUI executable on Windows instead of a console application.
-    SET(EXE_TARGET_TYPE WIN32)
 ENDIF()
 
 ADD_EXECUTABLE(dbgc_emu ${EXE_TARGET_TYPE} src/peanut_sdl.c)
