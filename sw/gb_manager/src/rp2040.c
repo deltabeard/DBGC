@@ -16,7 +16,6 @@
 /* ROMs */
 #include <gb_manager.gb.h>
 #include <libbet.gb.h>
-#include <pokered.gbc.h>
 
 typedef enum {
 	IO_EXP_INPUT_PORT = 0,

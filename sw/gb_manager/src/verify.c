@@ -14,7 +14,6 @@
 #include <hardware/sync.h>
 #include <pico/util/datetime.h>
 #include <hardware/structs/xip_ctrl.h>
-#include <verify.h>
 
 #define OPT_LIKELY(expr)	__builtin_expect(!!(expr), 1)
 #define OPT_UNLIKELY(expr)	__builtin_expect(!!(expr), 0)
@@ -109,8 +108,6 @@ typedef enum {
 #define CRAM_BANK_SIZE  0x2000
 #define CART_RAM_ADDR   0xA000
 
-#include <pokered.gbc.h>
-#include <gb240p.gb.h>
 #include <libbet.gb.h>
 #include <hardware/vreg.h>
 #include <pico/multicore.h>
@@ -238,18 +235,6 @@ void __no_inline_not_in_flash_func(core1_pio_manager)(void){
 		rom = libbet_gb + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
 		rom_sz = libbet_gb_len;
 		break;
-
-	case 2:
-		rom = gb240p_gb + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
-		rom_sz = gb240p_gb_len;
-		break;
-
-#if 1
-	case 3:
-		rom = pokered_gbc + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
-		rom_sz = pokered_gbc_len;
-		break;
-#endif
 	}
 
 	/* Initialise ROM data. */
