@@ -498,12 +498,14 @@ struct gb_s
 
 		/* Required for game name command. */
 		uint8_t str_index;
+		uint8_t cart_disabled;
 	} dbgc;
 };
 
 #define ADDR_NEW_CMD		0x0000
 #define ADDR_CMD_PARAM		0x0001
 #define ADDR_CMD_RET		0x0002
+#define ADDR_CMD_USBBOOT	0x0003
 
 typedef enum {
 	/**
@@ -562,6 +564,12 @@ uint8_t handle_gbdk_cmd(struct gb_s *gb)
  */
 uint8_t __gb_read(struct gb_s *gb, const uint_fast16_t addr)
 {
+	if(gb->dbgc.cart_disabled)
+	{
+		if((addr >> 12) < 0x8)
+			return 0xFF;
+	}
+
 	switch(addr >> 12)
 	{
 	case 0x0:
@@ -741,6 +749,12 @@ void __gb_write(struct gb_s *gb, const uint_fast16_t addr, const uint8_t val)
 			break;
 
 		case ADDR_CMD_RET:
+			printf("DBGC W RET %02X\n", val);
+			break;
+
+		case ADDR_CMD_USBBOOT:
+			gb->dbgc.cart_disabled = 1;
+			printf("DBGC W USBBOOT %02X\n", val);
 			break;
 		}
 		return;
@@ -3586,6 +3600,7 @@ void gb_reset(struct gb_s *gb)
 	gb->dbgc.cmd = 0;
 	gb->dbgc.param = 0;
 	gb->dbgc.str_index = 0;
+	gb->dbgc.cart_disabled = 0;
 }
 
 /**
