@@ -1,11 +1,16 @@
 #pragma once
 
+#define ROM_NINTENDO_LOGO_LOC	0x0104
+#define ROM_TITLE_LOC		0x0134
+#define ROM_TITLE_END_LOC	0x0143
+#define ROM_TITLE_NEW_END_LOC	0x013E
+#define ROM_OLD_LICENSE_LOC	0x014B
 
 /* Cart API. */
 /* Writing to this address executes a new command.
  * Reading from this address gives the currently executing command, or 0x00
  * for no command taking place. */
-#define ADDR_NEW_CMD		0x0000
+#define ADDR_NEW_CMD		ROM_NINTENDO_LOGO_LOC
 /* Cart commands that can be written to ADDR_NEW_CMD. */
 typedef enum {
 	/**
@@ -42,18 +47,13 @@ typedef enum {
 
 /* Writing to this address sets the parameter for the *next* command.
  * Reading from this address is undefined. */
-#define ADDR_CMD_PARAM		0x0001
+#define ADDR_CMD_PARAM		(ROM_NINTENDO_LOGO_LOC + 1)
 
 /* Writing to this address has no effect.
  * Reading from this address gives the return value of the command.
  * ADDR_CMD_STATUS will reset to CART_STATUS_READY once all the return values
  * from the command are read from this address. */
-#define ADDR_CMD_RET		0x0002
-
-#define ROM_TITLE_LOC		0x0134
-#define ROM_TITLE_END_LOC	0x0143
-#define ROM_TITLE_NEW_END_LOC	0x013E
-#define ROM_OLD_LICENSE_LOC	0x014B
+#define ADDR_CMD_RET		(ROM_NINTENDO_LOGO_LOC + 2)
 
 #define ROM_BANK_SIZE   0x4000
 #define CRAM_BANK_SIZE  0x2000

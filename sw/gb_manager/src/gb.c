@@ -10,61 +10,11 @@
 #include <gb/console.h>
 #include <gb/drawing.h>
 
+#include <cart.h>
+
 /* Macros. */
 #define object_distance(a, b)	((void *)&(b) - (void *)&(a))
 #define arraysize(array)	(sizeof(array)/sizeof(array[0]))
-
-/* Constants. */
-#define DBGC_CART_API_VER	0
-
-/* Cart API. */
-/* Writing to this address executes a new command.
- * Reading from this address gives the currently executing command, or 0x00
- * for no command taking place. */
-#define ADDR_NEW_CMD		0x0000
-/* Cart commands that can be written to ADDR_NEW_CMD. */
-typedef enum {
-	/**
-	 * No operation. Does nothing.
-	 * void nop(void)
-	 */
-	CART_CMD_NOP = 0,
-
-	/**
-	 * Get the number of games available to be played.
-	 * uint8_t get_num_games(void)
-	 */
-	CART_CMD_GET_NUMBER_OF_GAMES = 1,
-
-	/**
-	 * Get the name of a game when given a game number.
-	 * const char *get_game_name(uint8_t game_number)
-	 * The returned string is null terminated and the length of the string
-	 * is limited to 32 characters (including the null character).
-	 */
-	CART_CMD_GET_GAME_NAME = 2,
-
-	/**
-	 * Set a game to play, and reset the game boy. This exists the cart API.
-	 * void play_game(uint8_t game_number)
-	 */
-	CART_CMD_PLAY_GAME = 3,
-
-	/**
-	 * Reboot the DBGC cart into firmware upgrade mode.
-	 */
-	 CART_CMD_UPGRADE = 4
-} cart_cmd_e;
-
-/* Writing to this address sets the parameter for the *next* command.
- * Reading from this address is undefined. */
-#define ADDR_CMD_PARAM		0x0001
-
-/* Writing to this address has no effect.
- * Reading from this address gives the return value of the command.
- * ADDR_CMD_STATUS will reset to CART_STATUS_READY once all the return values
- * from the command are read from this address. */
-#define ADDR_CMD_RET		0x0002
 
 #define MENU_SELECT_ITEM(menu, sel)				\
 	do{							\

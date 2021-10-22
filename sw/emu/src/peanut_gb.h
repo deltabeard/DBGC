@@ -502,10 +502,10 @@ struct gb_s
 	} dbgc;
 };
 
-#define ADDR_NEW_CMD		0x0000
-#define ADDR_CMD_PARAM		0x0001
-#define ADDR_CMD_RET		0x0002
-#define ADDR_CMD_USBBOOT	0x0003
+#define ADDR_NEW_CMD		0x0104
+#define ADDR_CMD_PARAM		(ADDR_NEW_CMD + 1)
+#define ADDR_CMD_RET		(ADDR_NEW_CMD + 2)
+#define ADDR_CMD_USBBOOT	(ADDR_NEW_CMD + 3)
 
 typedef enum {
 	/**

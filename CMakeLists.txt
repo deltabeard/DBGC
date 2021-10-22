@@ -33,6 +33,7 @@ add_custom_target(gb_manager ALL
 add_custom_command(OUTPUT gb_manager.gb
         COMMAND $ENV{GBDK_C_COMPILER}
         ARGS ${GBDK_LINKER_OPTIONS} -I$ENV{GBDK_SDK_DIR}/include
+        -Isw/gb_manager/inc
         -o ${DBGC_BINARY_DIR}/gb_manager.gb sw/gb_manager/src/gb.c
         DEPENDS sw/gb_manager/src/gb.c
         WORKING_DIRECTORY ${DBGC_SOURCE_DIR}
@@ -40,6 +41,7 @@ add_custom_command(OUTPUT gb_manager.gb
 add_custom_command(OUTPUT gb_manager.asm
         COMMAND $ENV{GBDK_C_COMPILER}
         ARGS -S ${GBDK_LINKER_OPTIONS} -I$ENV{GBDK_SDK_DIR}/include
+        -Isw/gb_manager/inc
         -o ${DBGC_BINARY_DIR}/gb_manager.asm sw/gb_manager/src/gb.c
         DEPENDS sw/gb_manager/src/gb.c
         WORKING_DIRECTORY ${DBGC_SOURCE_DIR}
