@@ -37,8 +37,8 @@ gb_bus_write_data:
 ;	Fill the X register with ones.
 	mov X, ~null
 
-;	Wait for data to become ready. Delay 2 cycles to be sure.
-	wait 0 GPIO PHI [2]
+;	Wait for data to become ready.
+	wait 0 GPIO PHI
 
 ;	Read address and data into ISR.
 	in PINS, 24
@@ -83,8 +83,8 @@ gb_bus_write_data:
 ;	Fill the X register with ones.
 	mov X, ~null
 
-;	Wait for data to become ready. Delay 2 cycles to be sure.
-	wait 0 GPIO PHI [2]
+;	Wait for data to become ready.
+	wait 0 GPIO PHI
 
 ;	Read address and data into ISR.
 	in PINS, 24
