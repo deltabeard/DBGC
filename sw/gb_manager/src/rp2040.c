@@ -476,7 +476,7 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 		[0x04] = -1,
 
 		/* MBC2 */
-		[0x05] = 2, 2,
+		[0x05] = -1, -1,//2, 2, TODO: Unsupported
 		[0x07] = -1,
 
 		/* ROM with RAM (Unsupported) */
@@ -496,7 +496,7 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 	const uint16_t num_rom_banks_lut[] = {
 		2, 4, 8, 16, 32, 64, 128, 256, 512
 	};
-	const uint8_t num_ram_banks_lut[] = { 0, 1, 1, 4, 16, 8 };
+	const uint8_t num_ram_banks_lut[] = { 0, 0, 1, 4, 16, 8 };
 	/* Cartridge information:
 	 * Memory Bank Controller (MBC) type. */
 	uint8_t mbc;
@@ -678,6 +678,8 @@ _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 		}
 		else
 		{
+			/* On any other address, or if the command is NOP, then
+			 * read the ROM data. */
 			*tx_sm_do = rom[address];
 		}
 	}
