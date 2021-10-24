@@ -367,7 +367,9 @@
     }
   },
   "libraries": {
-    "pinned_footprint_libs": [],
+    "pinned_footprint_libs": [
+      "Project_Specific"
+    ],
     "pinned_symbol_libs": []
   },
   "meta": {
@@ -491,7 +493,7 @@
       }
     ],
     "meta": {
-      "version": 2
+      "version": 1
     },
     "net_colors": null
   },
