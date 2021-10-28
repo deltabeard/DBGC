@@ -37,7 +37,7 @@ gb_bus_write_data:
 ;	Fill the X register with ones.
 	mov X, ~null
 
-;	Wait for data to become ready. Delay 2 cycles to be sure.
+;	Wait for data to become ready. Delay 1 cycle for data bus to change. */
 	wait 0 GPIO PHI [1]
 
 ;	Read address and data into ISR.
@@ -83,7 +83,7 @@ gb_bus_write_data:
 ;	Fill the X register with ones.
 	mov X, ~null
 
-;	Wait for data to become ready. Delay 2 cycles to be sure.
+;	Wait for data to become ready. Delay 1 cycle for data bus to change.
 	wait 0 GPIO PHI [1]
 
 ;	Read address and data into ISR.
