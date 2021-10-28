@@ -26,9 +26,11 @@ typedef enum {
 } io_exp_reg_e;
 
 typedef enum {
-	GB_POWER_OFF = 0,
-	GB_POWER_ON = 1
+	GB_POWER_OFF = 1,
+	GB_POWER_ON = 0
 } gb_pwr_e;
+
+static uint8_t ram[32768];
 
 void gb_power(gb_pwr_e pwr)
 {
@@ -159,9 +161,6 @@ _Noreturn void __not_in_flash_func(play_mbc1_rom)(
 	uint8_t enable_cart_ram = 0;
 	/* Cartridge ROM/RAM mode select. */
 	uint8_t cart_mode_select = 0;
-
-	/* MBC1 allows for the use of external RAM. */
-	pio_sm_set_enabled(pio0, PIO_SM_NCS, true);
 
 	while(1)
 	{
@@ -301,6 +300,7 @@ _Noreturn void __not_in_flash_func(play_mbc1_rom)(
 	}
 }
 
+#if 1
 _Noreturn void __not_in_flash_func(play_mbc3_rom)(
 	const uint8_t *const rom, uint8_t *const ram,
 	uint16_t num_rom_banks_mask, uint8_t num_ram_banks)
@@ -313,7 +313,7 @@ _Noreturn void __not_in_flash_func(play_mbc3_rom)(
 	union cart_rtc rtc = { 0 };
 
 	/* MBC3 allows for the use of external RAM. */
-	pio_sm_set_enabled(pio0, PIO_SM_NCS, true);
+	//pio_sm_set_enabled(pio0, PIO_SM_NCS, true);
 
 	while(1)
 	{
@@ -460,6 +460,7 @@ _Noreturn void __not_in_flash_func(play_mbc3_rom)(
 		*tx_sm_do = data;
 	}
 }
+#endif
 
 _Noreturn
 void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
@@ -488,6 +489,7 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 		[0x0E] = -1,
 
 		/* MBC3 */
+		//[0x0F] = -1,-1,-1,-1,-1,
 		[0x0F] = 3, 3, 3, 3, 3,
 
 		/* Everything else is unsupported for now. */
@@ -504,13 +506,10 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 	uint16_t num_rom_banks_mask;
 	/* Number of RAM banks in cartridge. */
 	uint8_t num_ram_banks;
-	/* Pointer to cart RAM data that is allocated on the heap. */
-	unsigned char *ram = NULL;
-	unsigned ram_sz;
 
 	/* The Game Boy is held in reset again because the selected game may
 	 * change the mode that the Game Boy has to boot in. */
-	gb_power(GB_POWER_OFF);
+	//gb_power(GB_POWER_OFF);
 
 	/* Initialise ROM data. */
 	/* Check if cartridge type is supported, and set MBC type. */
@@ -523,25 +522,26 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 			goto err;
 
 		num_ram_banks = num_ram_banks_lut[ram_sz_value];
-		ram_sz = num_ram_banks * CRAM_BANK_SIZE;
+		/* Limit RAM size to 32KiB. */
+		if(num_ram_banks > 4)
+			goto err;
 
-		if(ram_sz != 0)
-		{
-			ram = calloc(ram_sz, sizeof(*ram));
-			if(ram == NULL)
-				goto err;
-		}
+		/* If cart RAM is required, enable SM_NCS state machine. */
+		if(num_ram_banks != 0)
+			pio_sm_set_enabled(pio0, PIO_SM_NCS, true);
 
 		num_rom_banks_mask = num_rom_banks_lut[rom[bank_count_location]] - 1;
 	}
 
-	sleep_ms(16);
-	gb_power(GB_POWER_ON);
+	multicore_fifo_push_blocking(1);
 
 	/* Disable XIP Cache.
 	 * This is done after using I2C, as that is read from flash by the
 	 * pico-sdk. */
 	xip_ctrl_hw->ctrl &= ~XIP_CTRL_EN_BITS;
+
+	/* Force the ROM to not use the XIP cache. */
+	rom += (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
 
 	switch(mbc)
 	{
@@ -553,16 +553,18 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 		play_mbc1_rom(rom, ram, num_rom_banks_mask, num_ram_banks);
 		break;
 
+#if 1
 	case 3:
 		play_mbc3_rom(rom, ram, num_rom_banks_mask, num_ram_banks);
 		break;
+#endif
 
 	default:
 		goto err;
 	}
 
 err:
-	play_mgmt_rom();
+	reset_usb_boot(0, 0);
 }
 
 ALWAYS_INLINE
@@ -633,7 +635,7 @@ _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 	const uint8_t *rom = gb_manager_gb;
 
 	/* ROM only game does not use cart RAM. */
-	pio_sm_set_enabled(pio0, PIO_SM_NCS, false);
+	//pio_sm_set_enabled(pio0, PIO_SM_NCS, false);
 
 	while(1)
 	{
@@ -687,7 +689,8 @@ _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 
 void core1_main(void)
 {
-	play_mgmt_rom();
+	//play_mgmt_rom();
+	check_and_play_rom(__2048_gb);
 }
 
 void init_pio(void)
@@ -759,6 +762,11 @@ int main(void)
 
 	init_pio();
 	begin_playing();
+
+	/* Wait until core1 is ready to play. */
+	(void) multicore_fifo_pop_blocking();
+	gb_power(GB_POWER_ON);
+
 	loop_forever();
 
 err:

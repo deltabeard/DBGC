@@ -5,6 +5,7 @@
 #define ROM_TITLE_END_LOC	0x0143
 #define ROM_TITLE_NEW_END_LOC	0x013E
 #define ROM_OLD_LICENSE_LOC	0x014B
+#define ROM_CART_RAM_LOC	0xA000
 
 /* Cart API. */
 /* Writing to this address executes a new command.
