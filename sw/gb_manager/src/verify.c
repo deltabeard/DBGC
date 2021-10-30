@@ -21,10 +21,6 @@
 #define OPT_FORCE_INLINE	__attribute__((__always_inline__)) OPT_INLINE
 
 #define ARRAYSIZE(array)	(sizeof(array)/sizeof(array[0]))
-#define CLR_SCRN		"\033[2J"
-
-#define I2C_PCA9536_ADDR 0b01000001
-#define I2C_DS3231M_ADDR 0b01101000
 
 #define CURRENT_MILLENNIUM	21
 #define RTC_YEARS_EPOCH		((CURRENT_MILLENNIUM - 1) * 100)
@@ -44,8 +40,11 @@ void func_rtcread(const char *cmd);
 void func_rtcwrite(const char *cmd);
 void func_gb(const char *cmd);
 void func_set_clock(const char *cmd);
+void func_framdump(const char *cmd);
+void func_framnuke(const char *cmd);
+void func_led(const char *cmd);
+void func_btn(const char *cmd);
 
-void func_play(const char *cmd);
 void func_date(const char *cmd);
 void func_reboot(const char *cmd);
 
@@ -62,10 +61,13 @@ static const struct func_map map[] = {
 	{ "RTC WRITE",	"Write date and time to internal RTC and set external RTC \n"
 			"\t'RTC WRITE <DOTW>:<DAY>/<MONTH>/<YEAR> <HOUR>:<MIN>:<SEC>'",
 			      					func_rtcwrite	},
+	{ "FRAM DUMP",	"Dump full contents of 32KiB FRAM",	func_framdump	},
+	{ "FRAM NUKE",	"Nuke the contents of 32KiB FRAM",	func_framnuke	},
+	{ "LED ON",	"Switches on LED",			func_led	},
+	{ "BTN",	"Get button status",			func_btn	},
 	{ "GB",		"Turn GB on (0) or off (1)\n"
 			       "\t'GB 1'",			func_gb		},
 	{ "DATE",	"Read date and time from internal RTC",	func_date	},
-	{ "PLAY",	"Play a game",			func_play	},
 	{ "CLOCK",	"Set CPU clock speed",		func_set_clock	},
 	{ "REBOOT",	"Reboot to USBBOOT",		func_reboot 	}
 };
@@ -101,76 +103,116 @@ typedef enum {
 	IO_EXP_DIRECTION
 } io_exp_reg;
 
-#include <hardware/pio.h>
-#include "comms.pio.h"
-
 #define ROM_BANK_SIZE   0x4000
 #define CRAM_BANK_SIZE  0x2000
 #define CART_RAM_ADDR   0xA000
 
-#include <libbet.gb.h>
 #include <hardware/vreg.h>
-#include <pico/multicore.h>
 #include <ctype.h>
-#include <hardware/dma.h>
-#include <hardware/structs/ssi.h>
 
-typedef enum {
-	MULTICORE_CMD_SM_ENABLED = 0,
+void func_framnuke(const char *cmd)
+{
+	uint8_t tx[34];
+	(void) cmd;
 
-	MULTICORE_CMD_MBC_ACCEPTED,
-	MULTICORE_CMD_MBC_FAIL,
+	memset(tx, 0xAB, sizeof(tx));
 
-	MULTICORE_CMD_ROM_ACCEPTED,
-	MULTICORE_CMD_ROM_FAIL,
+	/* Set initial write address to 0x0000. */
+	tx[0] = 0x00;
+	tx[1] = 0x00;
 
-	MULTICORE_CMD_RAM_ACCEPTED,
-	MULTICORE_CMD_RAM_FAIL,
-
-	MULTICORE_CMD_PLAYING
-} multicore_cmd_e;
-
-const uint16_t mbc_location = 0x0147;
-const uint16_t bank_count_location = 0x0148;
-const uint16_t ram_size_location = 0x0149;
-
-const uint8_t cart_mbc_lut[0xFF] =
+	for(size_t i = 0; i < 32768; i += 32)
 	{
-	/* ROM Only */
-	[0x00] = 0,
+		tx[0] = i >> 8;
+		tx[1] = i & 0xFF;
+		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, tx, sizeof(tx), false);
+		if(i % 1024 == 0)
+			putchar('.');
+	}
 
-	/* MBC1 */
-	[0x01] = 1, 1, 1,
-	[0x04] = -1,
+	putchar('\n');
+}
 
-	/* MBC2 */
-	[0x05] = 2, 2,
-	[0x07] = -1,
-
-	/* ROM with RAM (Unsupported) */
-	[0x08] = -1, -1,
-	[0x0A] = -1,
-
-	/* MMM01 (Unsupported) */
-	[0x0B] = -1, -1, -1,
-	[0x0E] = -1,
-
-	/* MBC3 */
-	[0x0F] = 3, 3, 3, 3, 3,
-
-	/* Everything else is unsupported for now. */
-	[0x14] = -1
-	};
-const uint8_t cart_ram_lut[] =
+void func_framdump(const char *cmd)
+{
+	(void) cmd;
 	{
-		0, 0, 1, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0,
-		1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0
-	};
-const uint16_t num_rom_banks_lut[] =
+		uint8_t tx[2];
+		/* Set read address to 0x0000. */
+		tx[0] = 0x00;
+		tx[1] = 0x00;
+		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR,
+			tx, sizeof(tx), true);
+	}
+
 	{
-		2, 4, 8, 16, 32, 64, 128, 256, 512
-	};
-const uint8_t num_ram_banks_lut[] = {0, 1, 1, 4, 16, 8};
+		uint32_t irq;
+		irq = save_and_disable_interrupts();
+		printf("IRQ: %08lX\n", irq);
+		restore_interrupts(irq);
+	}
+
+	{
+		uint8_t rx[32];
+		size_t transferred = 0;
+
+		while(transferred < 32768)
+		{
+			i2c_read_blocking(i2c_default, I2C_MB85RC256V_ADDR, rx,
+				sizeof(rx), true);
+			printf("%6d:", transferred);
+			for(uint8_t i = 0; i < sizeof(rx); i++)
+			{
+				printf(" %02X", rx[i++]);
+				printf("%02X", rx[i++]);
+				printf("%02X", rx[i++]);
+				printf("%02X", rx[i]);
+			}
+
+			printf("\n");
+			transferred += sizeof(rx);
+
+			if(transferred % 1024 == 0)
+			{
+				printf("PAGER: ");
+				(void) getchar();
+				printf("\n");
+			}
+		}
+	}
+
+	{
+		uint8_t unused;
+		i2c_read_blocking(i2c_default, I2C_MB85RC256V_ADDR, &unused, 1,
+			false);
+	}
+}
+
+void func_btn(const char *cmd)
+{
+	uint8_t conf = IO_EXP_INPUT_PORT;
+	uint8_t rx;
+
+	(void) cmd;
+
+	i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, &conf,
+		sizeof(conf), false);
+	i2c_read_blocking(i2c_default, I2C_PCA9536_ADDR, &rx, sizeof(rx),
+		false);
+
+	printf("Input: %02X\n", rx);
+}
+
+void func_led(const char *cmd)
+{
+	(void) cmd;
+
+	uint8_t tx[2];
+	tx[0] = IO_EXP_OUTPUT_PORT;
+	tx[1] = 0b11111010;
+	i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
+		sizeof(tx), false);
+}
 
 void power_gb(bool turn_gb_on)
 {
@@ -179,403 +221,6 @@ void power_gb(bool turn_gb_on)
 	tx[1] = 0b11111110 | !turn_gb_on;
 	i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
 			   sizeof(tx), false);
-}
-
-static inline bool pio_sm_is_rx_fifo_empty_mask(PIO pio, uint sm_mask) {
-	check_pio_param(pio);
-	return (pio->fstat & (sm_mask << PIO_FSTAT_RXEMPTY_LSB)) != 0;
-}
-
-void __no_inline_not_in_flash_func(core1_pio_manager)(void){
-	unsigned sm_a15, sm_ncs, sm_do;
-	const unsigned char *rom;
-	unsigned char *ram = NULL;
-	unsigned rom_sz, ram_sz;
-
-	/* Cartridge information:
-	 * Memory Bank Controller (MBC) type. */
-	uint8_t mbc;
-	/* Whether the MBC has internal RAM. */
-	uint8_t cart_ram;
-	/* Number of ROM banks in cartridge. */
-	uint16_t num_rom_banks_mask;
-	/* Number of RAM banks in cartridge. */
-	uint8_t num_ram_banks;
-	uint16_t selected_rom_bank = 1;
-	uint8_t cart_ram_bank = 0;
-	uint8_t enable_cart_ram = 0;
-	/* Cartridge ROM/RAM mode select. */
-	uint8_t cart_mode_select = 0;
-	union
-	{
-		struct __attribute__ ((__packed__))
-		{
-			uint8_t sec;
-			uint8_t min;
-			uint8_t hour;
-			uint8_t yday;
-			uint8_t high;
-		} rtc_bits;
-		uint8_t cart_rtc[5];
-	} rtc = { .cart_rtc = 0 };
-
-	/* This will panic if sm is not available. */
-	sm_a15 = pio_claim_unused_sm(pio0, true);
-	sm_ncs = pio_claim_unused_sm(pio0, true);
-	sm_do = pio_claim_unused_sm(pio0, true);
-	gb_bus_program_init(pio0, sm_a15, sm_ncs, sm_do);
-
-	/* Initialise Game Boy data communication. */
-	power_gb(false);
-
-	switch(multicore_fifo_pop_blocking())
-	{
-		default:
-	case 1:
-		rom = libbet_gb + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
-		rom_sz = libbet_gb_len;
-		break;
-	}
-
-	/* Initialise ROM data. */
-	/* Check if cartridge type is supported, and set MBC type. */
-	{
-		const uint8_t mbc_value = rom[mbc_location];
-		const uint8_t ram_sz_value = rom[ram_size_location];
-
-		if(mbc_value > sizeof(cart_mbc_lut) - 1 ||
-			(mbc = cart_mbc_lut[mbc_value]) == 255u || mbc > 1)
-		{
-			multicore_fifo_push_blocking(MULTICORE_CMD_MBC_FAIL);
-			return;
-		}
-		multicore_fifo_push_blocking(MULTICORE_CMD_MBC_ACCEPTED);
-
-		num_ram_banks = num_ram_banks_lut[ram_sz_value];
-		multicore_fifo_push_blocking(MULTICORE_CMD_RAM_ACCEPTED);
-
-		cart_ram = cart_ram_lut[mbc_value];
-		ram_sz = num_ram_banks * CRAM_BANK_SIZE;
-
-		if(ram_sz != 0)
-		{
-			ram = calloc(ram_sz, sizeof(*ram));
-			if(ram == NULL)
-			{
-				multicore_fifo_push_blocking(
-					MULTICORE_CMD_RAM_FAIL);
-				return;
-			}
-		}
-
-		num_rom_banks_mask = num_rom_banks_lut[rom[bank_count_location]] - 1;
-		multicore_fifo_push_blocking(MULTICORE_CMD_ROM_ACCEPTED);
-	}
-
-	/* Enable state machines. */
-	pio_sm_set_enabled(pio0, sm_a15, true);
-	pio_sm_set_enabled(pio0, sm_ncs, true);
-	pio_sm_set_enabled(pio0, sm_do,  true);
-	multicore_fifo_push_blocking(MULTICORE_CMD_SM_ENABLED);
-
-	multicore_fifo_push_blocking(MULTICORE_CMD_PLAYING);
-
-	/* Power cycle GB. */
-	sleep_ms(100);
-	power_gb(true);
-
-	while(1)
-	{
-		/* Only read the address, which is stored in the most
-		 * significant two bytes of the RX FIFO. */
-		io_ro_32 *rx_sm_a15 = &pio0->rxf[sm_a15];
-		io_ro_32 *rx_sm_ncs = &pio0->rxf[sm_ncs];
-		io_wo_8 *tx_sm_do = (io_wo_8 *) &pio0->txf[sm_do];
-		union {
-			struct {
-				uint16_t address;
-				uint8_t data;
-				uint8_t is_write;
-			};
-			uint32_t raw;
-		} in;
-		uint16_t address;
-		uint8_t data;
-
-		while(1)
-		{
-			if(pio_sm_is_rx_fifo_empty(pio0, sm_a15) == false)
-			{
-				in.raw = *rx_sm_a15;
-				break;
-			}
-			else if(pio_sm_is_rx_fifo_empty(pio0, sm_ncs) == false)
-			{
-				in.raw = *rx_sm_ncs;
-
-				/* Catch invalid addresses here. */
-				if(in.address < 0xA000 || in.address > 0xBFFF)
-					continue;
-
-				break;
-			}
-		}
-
-		address = in.address;
-
-		if(in.is_write)
-		{
-			/* If we need to write data to ROM, then we obtain the
-			 * data byte from the third byte of the RX FIFO. */
-			data = in.data;
-
-			multicore_fifo_push_blocking(in.raw);
-
-			switch(address >> 12)
-			{
-			case 0x0:
-			case 0x1:
-				if(mbc > 0 && cart_ram)
-					enable_cart_ram = ((data & 0x0F) == 0x0A);
-
-				break;
-
-			case 0x2:
-			case 0x3:
-				if(mbc == 1)
-				{
-					selected_rom_bank = (data & 0x1F) | (selected_rom_bank & 0x60);
-
-					if((selected_rom_bank & 0x1F) == 0x00)
-						selected_rom_bank++;
-				}
-				else if(mbc == 3)
-				{
-					selected_rom_bank = data & 0x7F;
-
-					if(!selected_rom_bank)
-						selected_rom_bank++;
-				}
-
-				selected_rom_bank = selected_rom_bank & num_rom_banks_mask;
-
-				break;
-
-			case 0x4:
-			case 0x5:
-				if(mbc == 1)
-				{
-					cart_ram_bank = (data & 3);
-					selected_rom_bank = ((data & 3) << 5) | (selected_rom_bank & 0x1F);
-					selected_rom_bank = selected_rom_bank & num_rom_banks_mask;
-				}
-				else if(mbc == 3)
-					cart_ram_bank = data;
-
-				break;
-
-			case 0x6:
-			case 0x7:
-				cart_mode_select = (data & 1);
-				break;
-
-			case 0xA:
-			case 0xB:
-				if(cart_ram && enable_cart_ram)
-				{
-					if(mbc == 3 && cart_ram_bank >= 0x08)
-						rtc.cart_rtc[cart_ram_bank -
-						0x08] = data;
-					else if(cart_mode_select &&
-						cart_ram_bank < num_ram_banks)
-					{
-						ram[address - CART_RAM_ADDR + (cart_ram_bank * CRAM_BANK_SIZE)] = data;
-					}
-					else if(num_ram_banks)
-					{
-						ram[address -
-						    CART_RAM_ADDR] = data;
-					}
-				}
-
-				break;
-
-			default:
-				/* This is an invalid address. */
-				break;
-			}
-
-			continue;
-		}
-
-		switch(address >> 12)
-		{
-		case 0x0:
-		case 0x1:
-		case 0x2:
-		case 0x3:
-			data = rom[address];
-			break;
-
-		case 0x4:
-		case 0x5:
-		case 0x6:
-		case 0x7:
-			if(mbc == 1 && cart_mode_select)
-				data = rom[address + ((selected_rom_bank & 0x1F) - 1) * ROM_BANK_SIZE];
-			else
-				data = rom[address + (selected_rom_bank - 1) * ROM_BANK_SIZE];
-
-			break;
-
-		case 0xA:
-		case 0xB:
-			if(cart_ram && enable_cart_ram)
-			{
-				if(mbc == 3 && cart_ram_bank >= 0x08)
-					data = rtc.cart_rtc[cart_ram_bank -
-					0x08];
-				else if((cart_mode_select || mbc != 1) &&
-					cart_ram_bank < num_ram_banks)
-				{
-					data = ram[address - CART_RAM_ADDR +
-						   (cart_ram_bank * CRAM_BANK_SIZE)];
-				}
-				else
-					data = ram[address - CART_RAM_ADDR];
-			}
-			else
-			{
-				/* Cart RAM was not enabled. */
-				data = 0xFF;
-			}
-
-			break;
-
-		default:
-			/* Ignore invalid addresses. */
-			continue;
-		}
-
-		*tx_sm_do = data;
-
-		in.data = data;
-		multicore_fifo_push_blocking(in.raw);
-	}
-}
-
-_Noreturn void core1_main(void){
-	//save_and_disable_interrupts();
-	core1_pio_manager();
-
-	while(1)
-		__wfi();
-}
-
-void __no_inline_not_in_flash_func(func_play)(const char *cmd)
-{
-	static bool started = false;
-	unsigned long game_selection;
-	union {
-		struct __attribute__ ((__packed__)) {
-			uint16_t address;
-			uint8_t data;
-			uint8_t is_write;
-		};
-		uint32_t raw;
-	} in_stash[1024];
-	unsigned in_i = 0;
-
-	if(started == true)
-	{
-		printf("Core1 already started\n");
-		multicore_reset_core1();
-		pio_clear_instruction_memory(pio0);
-		pio_sm_set_enabled(pio0, 0, false);
-		pio_sm_set_enabled(pio0, 1, false);
-	}
-
-	cmd += strlen("PLAY ");
-	game_selection = strtoul(cmd, NULL, 10);
-	if(game_selection == 0)
-	{
-		printf("Select a game between 1 and 3:\nPLAY 1\n");
-		return;
-	}
-
-	printf("Starting Core1\n");
-	multicore_launch_core1(core1_main);
-	multicore_fifo_push_blocking(game_selection);
-
-	while(1)
-	{
-		uint32_t out;
-
-		out = multicore_fifo_pop_blocking();
-		switch(out)
-		{
-		case MULTICORE_CMD_SM_ENABLED:
-			printf("State machines enabled\n");
-			break;
-
-		case MULTICORE_CMD_MBC_ACCEPTED:
-			printf("MBC accepted\n");
-			break;
-
-		case MULTICORE_CMD_MBC_FAIL:
-			printf("MBC check failed\n");
-			goto err;
-
-		case MULTICORE_CMD_ROM_ACCEPTED:
-			printf("ROM accepted\n");
-			break;
-
-		case MULTICORE_CMD_ROM_FAIL:
-			printf("ROM rejected\n");
-			goto err;
-
-		case MULTICORE_CMD_RAM_ACCEPTED:
-			printf("RAM accepted\n");
-			break;
-
-		case MULTICORE_CMD_RAM_FAIL:
-			printf("RAM rejected\n");
-			goto err;
-
-		case MULTICORE_CMD_PLAYING:
-			printf("Playing\n");
-			started = true;
-			while(in_i < ARRAYSIZE(in_stash) &&
-					getchar_timeout_us(0) != 'q')
-			{
-				bool popped;
-				popped = multicore_fifo_pop_timeout_us(10,
-					&in_stash[in_i].raw);
-				if(popped == false)
-					continue;
-
-				in_i++;
-			}
-			for(unsigned i = 0; i < in_i; i++)
-			{
-				printf("%c %04X %02X\t",
-					in_stash[i].is_write ? 'W' : 'R',
-					in_stash[i].address,
-					in_stash[i].data);
-			}
-			return;
-
-		default:
-			break;
-		}
-	}
-
-err:
-	printf("Core1 did not start properly\n");
-	multicore_reset_core1();
-	pio_clear_instruction_memory(pio0);
-
-	return;
 }
 
 void func_set_clock(const char *cmd)
@@ -1002,18 +647,20 @@ int main(void)
 	/* Reduce power consumption to stop IO Expander Power-On Reset Errata. */
 	sleep_ms(10);
 
-	/* Set system clock to 276MHz and flash to 138MHz. */
+	/* Set system clock to 286MHz and flash to 143MHz. */
 	{
-		const unsigned vco = 552000000;
+		/* The value for VCO set here is meant for least power
+		 * consumption. */
+		const unsigned vco = 572000000;
 		const unsigned div1 = 2, div2 = 1;
 
 		vreg_set_voltage(VREG_VOLTAGE_1_15);
-		sleep_ms(10);
+		sleep_ms(4);
 		set_sys_clock_pll(vco, div1, div2);
-		sleep_ms(10);
+		sleep_ms(4);
 	}
 
-	i2c_init(i2c_default, 100 * 1000);
+	i2c_init(i2c_default, 400 * 1000);
 	gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
 	gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
 	gpio_disable_pulls(PICO_DEFAULT_I2C_SDA_PIN);
@@ -1031,13 +678,11 @@ int main(void)
 		gpio_set_input_hysteresis_enabled(i, false);
 	}
 
-#if 1
 	for(unsigned i = PIO_PHI; i <= PIO_DIR; i++)
 	{
 		/* Use fast slew rate for GB Bus. */
 		gpio_set_slew_rate(i, GPIO_SLEW_RATE_FAST);
 	}
-#endif
 
 	/* Set external RTC configuration. */
 	{
@@ -1052,25 +697,27 @@ int main(void)
 	{
 		uint8_t tx[2];
 		tx[0] = IO_EXP_DIRECTION;
-		tx[1] = 0b11111110;
+		tx[1] = 0b11111010;
 		i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
 				   sizeof(tx), false);
 	}
 
-	//gpio_set_drive_strength(PIO_DIR, GPIO_DRIVE_STRENGTH_12MA);
-	//gpio_set_function(PIO_DIR, GPIO_FUNC_PIO0);
-	//gpio_set_dir(PIO_DIR, true);
-	//gpio_put(PIO_DIR, 1);
+	/* Set initial address on FRAM. */
+	{
+		uint8_t tx[2];
+		tx[0] = 0x00;
+		tx[1] = 0x00;
+		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR,
+			tx, sizeof(tx), false);
+	}
 
-	func_gb("GB 1");
+	power_gb(false);
 	bi_decl_if_func_used(bi_program_feature("PIO0 Game Boy Bus"));
 
 	/* If baudrate is set to PICO_STDIO_USB_RESET_MAGIC_BAUD_RATE, then the
 	 * RP2040 will reset to BOOTSEL mode. */
-	stdio_init_all();
+	stdio_usb_init();
 
-	//func_play("PLAY 3");
-	printf("%s", CLR_SCRN);
 	usb_commander();
 
 	return 0;

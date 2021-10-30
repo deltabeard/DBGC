@@ -73,7 +73,7 @@ inline void menu_set_items(struct menu_ctx *menu, uint8_t nmemb,
 	menu->items = items;
 }
 
-void loop_forever(void)
+_Noreturn void loop_forever(void)
 {
 	while(1)
 		__asm__("HALT");

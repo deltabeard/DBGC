@@ -1,8 +1,10 @@
+#include <sys/cdefs.h>
 #include <stdlib.h>
 #include <hardware/i2c.h>
 #include <hardware/pio.h>
 #include <hardware/vreg.h>
 #include <hardware/pll.h>
+#include <hardware/dma.h>
 #include <pico/stdlib.h>
 #include <pico/multicore.h>
 #include <pico/bootrom.h>
@@ -30,7 +32,8 @@ typedef enum {
 	GB_POWER_ON = 0
 } gb_pwr_e;
 
-static uint8_t ram[32768];
+static uint8_t i2c_ram[32770] = { 0x00, 0x00 };
+static uint8_t *const ram = &i2c_ram[2];
 
 void gb_power(gb_pwr_e pwr)
 {
@@ -73,18 +76,36 @@ int init_i2c_peripherals(void)
 	int ret = 0;
 
 	/* Initialise I2C. */
-	i2c_init(i2c_default, 100 * 1000);
+	i2c_init(i2c_default, 400 * 1000);
 
 	/* Set external IO expander configuration. */
 	{
 		uint8_t tx[2];
 		tx[0] = IO_EXP_DIRECTION;
-		tx[1] = 0b11111110;
+		tx[1] = 0b11111010;
 		ret = i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
 			sizeof(tx), false);
+
+		/* Set to input address for future button polling. */
+		tx[0] = IO_EXP_INPUT_PORT;
+		i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, &tx[0],
+			1, false);
 	}
 
-	/* TODO: RTC and FRAM are ignored here. */
+	/* Read save data from FRAM. */
+	{
+		uint8_t tx[2];
+
+		/* Set read address to 0x0000. */
+		tx[0] = 0x00;
+		tx[1] = 0x00;
+		ret = i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, tx,
+			sizeof(tx), true);
+		ret = i2c_read_blocking(i2c_default, I2C_MB85RC256V_ADDR, ram,
+			sizeof(i2c_ram)-2, false);
+	}
+
+	/* TODO: RTC is ignored here. */
 
 	return ret;
 }
@@ -533,7 +554,7 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 		num_rom_banks_mask = num_rom_banks_lut[rom[bank_count_location]] - 1;
 	}
 
-	multicore_fifo_push_blocking(1);
+	multicore_fifo_push_blocking(num_ram_banks);
 
 	/* Disable XIP Cache.
 	 * This is done after using I2C, as that is read from flash by the
@@ -689,7 +710,10 @@ _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 
 void core1_main(void)
 {
+	//__asm volatile ("cpsid i");
+
 	//play_mgmt_rom();
+	//check_and_play_rom(libbet_gb);
 	check_and_play_rom(__2048_gb);
 }
 
@@ -706,21 +730,68 @@ void init_pio(void)
 	return;
 }
 
-void __no_inline_not_in_flash_func(loop_forever)(void)
+#if 0
+void i2cDMA(i2c_inst_t *i2c, unsigned count, uint8_t *buf)
 {
-	/* Sleep forever. */
+	const int dma_write = 1;
+	dma_channel_config c_write;
+
+	// configure write DMA
+	c_write = dma_channel_get_default_config(dma_write);
+	channel_config_set_transfer_data_size(&c_write, DMA_SIZE_8);
+	channel_config_set_read_increment(&c_write, false);
+	channel_config_set_write_increment(&c_write, false);
+	channel_config_set_dreq(&c_write, DREQ_I2C0_TX);
+
+	dma_channel_configure(dma_write, &c_write,
+		&i2c->hw->data_cmd,	/* Destination pointer */
+		buf,			/* Source pointer */
+		count,			/* Number of transfers */
+		true);
+
+	//dma_channel_start(dma_write);
+}
+#endif
+
+_Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
+{
+	/* If this game has no save data (does not use cart RAM) then sleep this
+	 * core forever to save power. */
+	if(ram_sz == 0)
+	{
+		/* Sleep forever. */
+		__asm volatile ("cpsid i");
+		while(1)
+			__wfi();
+
+		UNREACHABLE();
+	}
+
 	while(1)
-		__wfi();
+	{
+#if 0
+		uint8_t rx;
+
+		i2c_read_blocking(i2c_default, I2C_PCA9536_ADDR, &rx, sizeof(rx),
+			false);
+
+		/* Loop if button isn't pressed. */
+		if(rx != 0xFD)
+			continue;
+#endif
+		sleep_ms(16*1024);
+		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
+			ram_sz + 2, false);
+	}
 }
 
 void begin_playing(void)
 {
 	/* Disable interrupts on this core.
 	 * There should not be any interrupts running on this core anyway. */
-	__asm volatile ("cpsid i");
+	//__asm volatile ("cpsid i");
 
 	/* Grant high bus priority to the second core. */
-	/* FIXME: this may not be the correct register. */
 	bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_PROC1_BITS;
 
 	multicore_launch_core1(core1_main);
@@ -754,7 +825,7 @@ int main(void)
 	/* The IO expander is required for the cart to work, as it must be
 	 * use to pull the Game Boy out of reset. */
 	if(init_i2c_peripherals() < 0)
-		goto err;
+		reset_usb_boot(0, 0);
 
 	/* After initialising the IO expander, ensure that the Game Boy is held
 	 * in reset. */
@@ -764,13 +835,15 @@ int main(void)
 	begin_playing();
 
 	/* Wait until core1 is ready to play. */
-	(void) multicore_fifo_pop_blocking();
-	gb_power(GB_POWER_ON);
+	{
+		uint32_t num_ram_banks;
+		uint32_t ram_sz;
 
-	loop_forever();
+		num_ram_banks = multicore_fifo_pop_blocking();
+		ram_sz = num_ram_banks * CRAM_BANK_SIZE;
+		gb_power(GB_POWER_ON);
+		loop_forever(ram_sz);
+	}
 
-err:
-	reset_usb_boot(0, 0);
-
-	return 0;
+	UNREACHABLE();
 }
