@@ -32,7 +32,7 @@ The flash storage will be partitioned to allow the user to either support large 
 By utilising RP2040 and TinyUSB features, the USB-C port can act as a networking device, which when attached to a host, will allow the RP2040 to connect to the Internet. Future features will allow supported Game Boy games to make connections to the internet.
 
 ## Notes
-BOM is optimised for purchase from JLCPCB with SMT assembly.
+BOM is optimised for purchase from JLCPCB with SMT assembly. The cost of producing a single cart of this revision is approximately £15. This version of the PCB has major errors that can be seen in the [errata.md](https://github.com/deltabeard/DBGC/blob/master/errata.md) document. Do not manufacture PCB version 0.3 or below; instead wait for the next version or the one on the master branch. 
 
 # License
 
