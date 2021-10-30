@@ -1,5 +1,13 @@
 /**
- * GB 2040 CART MANAGER
+ * DBGC Cart Manager for the Game Boy.
+ * Copyright (c) 2021 Mahyar Koshkouei
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted, provided that the above copyright notice and
+ * this permission notice appear in all copies.
+ * THIS SOFTWARE IS PROVIDED 'AS-IS', WITHOUT ANY EXPRESS OR IMPLIED WARRANTY.
+ * IN NO EVENT WILL THE AUTHORS BE HELD LIABLE FOR ANY DAMAGES ARISING FROM
+ * THE USE OF THIS SOFTWARE.
  */
 
 #include <stdio.h>

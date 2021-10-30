@@ -36,11 +36,35 @@ BOM is optimised for purchase from JLCPCB with SMT assembly. The cost of produci
 
 # License
 
-This pre-release project is proprietary, and not for resale.
+The majority of the software within this project are licensed under the 
+terms of the ISC License. Please see the header of each source file for 
+license terms. In brief, the copyright and permission notices must not be
+modified.
+
+The PCB schematic and layout are licensed under the 
+Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0) 
+license. In brief, you may modify and share but only under the same license 
+to allow others to continue modifying and sharing.
+
+The distribution of this project in source and binary form, regardless for 
+free or not, with proprietary software, including commercial games, is 
+unauthorised.
+
+This project includes
+[Libbet and the Magic Floor](https://github.com/pinobatch/libbet) and
+[2048-gb](https://github.com/Sanqui/2048-gb), which are both 
+licensed under the terms of the zlib license, and are included within this
+project in an unmodified binary form for testing purposes.
 
 # Showcase
 
-- [Pokemon Polished Crystal](https://github.com/Rangi42/polishedcrystal). An major fan-made upgrade to Pokemon Crystal. Uses MBC3 with battery backed SRAM and Real Time Clock. The version tested had CGB double-speed disabled, which caused minor graphical glitches within the game. DBGC does not currently support double-speed, so using it to play Polished Crystal will not result in the intended experience.
+- [Pokemon Polished Crystal](https://github.com/Rangi42/polishedcrystal). An 
+  major fan-made upgrade to Pokemon Crystal. Uses MBC3 with battery backed 
+  SRAM and Real Time Clock. The version tested had CGB double-speed disabled,
+  which caused minor graphical glitches within the game. DBGC does not 
+  currently support double-speed, so using it to play Polished Crystal will 
+  not result in the intended experience. Non-volatile saving does not 
+  currently work (save data is erased on power off).
 
 ![Pokemon Polished Crystal](https://user-images.githubusercontent.com/3747104/139542854-f9939c75-38e1-47c1-935c-c93735fade4c.jpg)
 
@@ -48,6 +72,7 @@ This pre-release project is proprietary, and not for resale.
 
 ![megaman1](https://user-images.githubusercontent.com/3747104/139542857-6119248a-b5ca-431a-a083-31c3c4363988.jpg)
 
-- [2048-gb](https://github.com/Sanqui/2048-gb). Open source homebrew game. Uses no ROM banking.
+- [2048-gb](https://github.com/Sanqui/2048-gb). Open source homebrew game. 
+  Uses no ROM banking.
 
 ![2048](https://user-images.githubusercontent.com/3747104/139542860-f92e0137-292f-451e-84d8-506cd876ac5d.jpg)

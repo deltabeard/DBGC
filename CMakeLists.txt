@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.13)
 include(pico_sdk_import.cmake)
 
 project(DBGC
-        VERSION 0.1.0.0
+        VERSION 0.3.0.0
         DESCRIPTION "Game Boy Cart using the RP2040 microcontroller"
         HOMEPAGE_URL "https://github.com/deltabeard/DBGC"
         LANGUAGES C CXX)

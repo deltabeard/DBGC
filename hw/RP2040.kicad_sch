@@ -5,11 +5,11 @@
   (paper "A4")
 
   (title_block
-    (title "RP2040 Game Boy Cart")
+    (title "DBGC: RP2040 Game Boy Cart")
     (date "2021-09-29")
     (rev "0.3a")
-    (company "Mahyar Koshkouei")
-    (comment 1 "All Rights Reserved")
+    (company "Copyright (c) 2021 Mahyar Koshkouei")
+    (comment 1 "CC BY-SA 4.0")
     (comment 2 "Compatible with DMG, MGB, & CGB. Collectively referred to as \"GB\" here.")
   )
 

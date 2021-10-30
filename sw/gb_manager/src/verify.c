@@ -1,4 +1,14 @@
-#include <sys/cdefs.h>
+/**
+ * Verification and testing tool for DBGC.
+ * Copyright (c) 2021 Mahyar Koshkouei
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted, provided that the above copyright notice and
+ * this permission notice appear in all copies.
+ * THIS SOFTWARE IS PROVIDED 'AS-IS', WITHOUT ANY EXPRESS OR IMPLIED WARRANTY.
+ * IN NO EVENT WILL THE AUTHORS BE HELD LIABLE FOR ANY DAMAGES ARISING FROM
+ * THE USE OF THIS SOFTWARE.
+ */
 
 #define _GNU_SOURCE
 
@@ -14,6 +24,9 @@
 #include <hardware/sync.h>
 #include <pico/util/datetime.h>
 #include <hardware/structs/xip_ctrl.h>
+#include <sys/cdefs.h>
+#include <hardware/vreg.h>
+#include <ctype.h>
 
 #define OPT_LIKELY(expr)	__builtin_expect(!!(expr), 1)
 #define OPT_UNLIKELY(expr)	__builtin_expect(!!(expr), 0)
@@ -106,9 +119,6 @@ typedef enum {
 #define ROM_BANK_SIZE   0x4000
 #define CRAM_BANK_SIZE  0x2000
 #define CART_RAM_ADDR   0xA000
-
-#include <hardware/vreg.h>
-#include <ctype.h>
 
 void func_framnuke(const char *cmd)
 {

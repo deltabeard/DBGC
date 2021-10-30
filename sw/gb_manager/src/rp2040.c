@@ -1,3 +1,15 @@
+/**
+ * DBGC core for the RP2040.
+ * Copyright (c) 2021 Mahyar Koshkouei
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted, provided that the above copyright notice and
+ * this permission notice appear in all copies.
+ * THIS SOFTWARE IS PROVIDED 'AS-IS', WITHOUT ANY EXPRESS OR IMPLIED WARRANTY.
+ * IN NO EVENT WILL THE AUTHORS BE HELD LIABLE FOR ANY DAMAGES ARISING FROM
+ * THE USE OF THIS SOFTWARE.
+ */
+
 #include <sys/cdefs.h>
 #include <stdlib.h>
 #include <hardware/i2c.h>
