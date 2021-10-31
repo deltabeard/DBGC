@@ -46,10 +46,6 @@ Creative Commons Attribution-ShareAlike 4.0 International (CC BY-SA 4.0)
 license. In brief, you may modify and share but only under the same license 
 to allow others to continue modifying and sharing.
 
-The distribution of this project in source and binary form, regardless for 
-free or not, with proprietary software, including commercial games, is 
-unauthorised.
-
 This project includes
 [Libbet and the Magic Floor](https://github.com/pinobatch/libbet) and
 [2048-gb](https://github.com/Sanqui/2048-gb), which are both 
