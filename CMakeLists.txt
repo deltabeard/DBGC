@@ -68,7 +68,7 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()
 set(CMAKE_C_FLAGS_DEBUG "-g3 -Og -fanalyzer -Wall -Wextra")
-set(CMAKE_C_FLAGS_MINSIZEREL "-g2 -Os -Wall -Wextra -DNDEBUG")
+set(CMAKE_C_FLAGS_MINSIZEREL "-g2 -Os -ffast-math -Wall -Wextra -DNDEBUG")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g2 -Ofast -Wall -Wextra")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELWITHDEBINFO} -DNDEBUG")
 
@@ -93,6 +93,7 @@ target_compile_definitions(manager PRIVATE
         PARAM_ASSERTIONS_DISABLE_ALL=1
         PICO_ENTER_USB_BOOT_ON_EXIT=1
         PICO_PANIC_FUNCTION=dbgc_panic)
+#pico_set_binary_type(manager copy_to_ram)
 pico_enable_stdio_usb(manager 0)
 pico_enable_stdio_uart(manager 0)
 pico_add_verbose_dis_output(manager)

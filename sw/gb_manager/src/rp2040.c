@@ -31,6 +31,8 @@
 #include <gb_manager.gb.h>
 #include <libbet.gb.h>
 #include <2048.gb.h>
+#include <mbc3_ram_viewer.gb.h>
+#include <la.gb.h>
 
 typedef enum {
 	IO_EXP_INPUT_PORT = 0,
@@ -726,8 +728,10 @@ void core1_main(void)
 
 	//play_mgmt_rom();
 	//check_and_play_rom(libbet_gb);
-	check_and_play_rom(__2048_gb);
+	check_and_play_rom(la_gb);
 }
+
+#include <hardware/regs/pio.h>
 
 void init_pio(void)
 {
@@ -738,6 +742,10 @@ void init_pio(void)
 	/* PIO_SM_NCS should be enabled when cart RAM access is expected. */
 	pio_sm_set_enabled(pio0, PIO_SM_NCS, false);
 	pio_sm_set_enabled(pio0, PIO_SM_DO,  true);
+
+	/* Disable input sync to reduce input delay. */
+	/* FIXME: This causes problems. */
+	//pio0->input_sync_bypass = ~pio0->input_sync_bypass;
 
 	return;
 }
@@ -769,7 +777,9 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 {
 	/* If this game has no save data (does not use cart RAM) then sleep this
 	 * core forever to save power. */
+#if 1
 	if(ram_sz == 0)
+#endif
 	{
 		/* Sleep forever. */
 		__asm volatile ("cpsid i");
@@ -781,19 +791,32 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 
 	while(1)
 	{
-#if 0
+#if 1
+		uint8_t conf = IO_EXP_INPUT_PORT;
 		uint8_t rx;
 
-		i2c_read_blocking(i2c_default, I2C_PCA9536_ADDR, &rx, sizeof(rx),
-			false);
+		//sleep_ms(16);
+		i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, &conf,
+			sizeof(conf), false);
+		i2c_read_blocking(i2c_default, I2C_PCA9536_ADDR, &rx,
+			sizeof(rx), false);
 
-		/* Loop if button isn't pressed. */
-		if(rx != 0xFD)
+		/* If button is pressed, save and power off. */
+		if((rx & 0b0010))
 			continue;
 #endif
-		sleep_ms(16*1024);
 		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
 			ram_sz + 2, false);
+
+		/* The Game Boy powers off to signify that saving was
+		 * successful.
+		 * TODO: This should be changed to an LED blinking. */
+		gb_power(GB_POWER_OFF);
+		while(i2c_default->hw->txflr != 0);
+		while(1)
+			__wfi();
+		//sleep_ms(512);
+		//gb_power(GB_POWER_ON);
 	}
 }
 
@@ -809,7 +832,10 @@ void begin_playing(void)
 	multicore_launch_core1(core1_main);
 }
 
-void __no_inline_not_in_flash_func(dbgc_panic)(void)
+void
+__attribute__((noreturn))
+__printflike(1, 0)
+dbgc_panic(__unused const char *fmt, ...)
 {
 	reset_usb_boot(0, 0);
 }
