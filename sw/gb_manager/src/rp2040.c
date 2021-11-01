@@ -10,6 +10,11 @@
  * THE USE OF THIS SOFTWARE.
  */
 
+/* The management ROM is used for selecting a game on boot, and for saving
+ * data from the FRAM to NOR flash memory.
+ * Remains disabled as it doesn't work properly. */
+#define USE_MGMT_ROM 0
+
 #include <sys/cdefs.h>
 #include <stdlib.h>
 #include <hardware/i2c.h>
@@ -46,9 +51,61 @@ typedef enum {
 	GB_POWER_ON = 0
 } gb_pwr_e;
 
-static uint8_t i2c_ram[32770] = { 0x00, 0x00 };
-static uint8_t *const ram = &i2c_ram[2];
+union gb_bus_rx {
+	struct {
+		uint16_t address;
+		uint8_t data;
+		uint8_t is_write;
+	};
+	uint32_t raw;
+};
 
+union cart_rtc
+{
+	struct __attribute__ ((__packed__))
+	{
+		uint8_t sec;
+		uint8_t min;
+		uint8_t hour;
+		uint8_t yday;
+		uint8_t high;
+	} rtc_bits;
+	uint8_t bytes[5];
+};
+
+#if USE_MGMT_ROM
+struct gb_mgmt_ctx {
+	uint8_t cmd;
+	uint8_t param;
+	uint8_t ret;
+
+	union {
+		struct {
+			const uint8_t *rom;
+			uint8_t remaining_length;
+		} game_name;
+	} ctx;
+};
+
+const uint8_t *roms[] = {
+	libbet_gb,
+	__2048_gb
+};
+#endif
+
+/* Save file storage. The first two bytes are the address to start writing to
+ * in the FRAM. */
+static uint8_t i2c_ram[32770] = { 0x00, 0x00 };
+/* Pointer to the first byte of where the game will save data. */
+static uint8_t *const ram = &i2c_ram[2];
+/* Number of writes to cartridge RAM (battery backed RAM) since last sync
+ * with FRAM. This should reduce FRAM writes and battery power a bit.
+ * TODO: Change this to atomics. */
+static volatile uint_fast8_t ram_write = 0;
+
+/**
+ * Turn the Game Boy on or off.
+ */
 void gb_power(gb_pwr_e pwr)
 {
 	uint8_t tx[2];
@@ -60,6 +117,9 @@ void gb_power(gb_pwr_e pwr)
 	return;
 }
 
+/**
+ * Initialise GPIO pins for this application.
+ */
 void init_gpio_pins(void)
 {
 	/* I2C0 */
@@ -85,12 +145,16 @@ void init_gpio_pins(void)
 	}
 }
 
+/**
+ * Initialise the I2C peripherals. This also reads save data from the FRAM.
+ * \return	PICO_ERROR_GENERIC on error or bytes written.
+ */
 int init_i2c_peripherals(void)
 {
 	int ret = 0;
 
 	/* Initialise I2C. */
-	i2c_init(i2c_default, 400 * 1000);
+	UNUSED_RET i2c_init(i2c_default, 400 * 1000);
 
 	/* Set external IO expander configuration. */
 	{
@@ -100,10 +164,13 @@ int init_i2c_peripherals(void)
 		ret = i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
 			sizeof(tx), false);
 
+		if(ret == PICO_ERROR_GENERIC)
+			goto out;
+
 		/* Set to input address for future button polling. */
 		tx[0] = IO_EXP_INPUT_PORT;
-		i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, &tx[0],
-			1, false);
+		UNUSED_RET i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR,
+			&tx[0], 1, false);
 	}
 
 	/* Read save data from FRAM. */
@@ -115,58 +182,19 @@ int init_i2c_peripherals(void)
 		tx[1] = 0x00;
 		ret = i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, tx,
 			sizeof(tx), true);
-		ret = i2c_read_blocking(i2c_default, I2C_MB85RC256V_ADDR, ram,
-			sizeof(i2c_ram)-2, false);
+
+		if(ret == PICO_ERROR_GENERIC)
+			goto out;
+
+		UNUSED_RET i2c_read_blocking(i2c_default,
+			I2C_MB85RC256V_ADDR, ram, sizeof(i2c_ram)-2, false);
 	}
 
 	/* TODO: RTC is ignored here. */
 
+out:
 	return ret;
 }
-
-union gb_bus_rx {
-	struct {
-		uint16_t address;
-		uint8_t data;
-		uint8_t is_write;
-	};
-	uint32_t raw;
-};
-
-struct gb_mgmt_ctx {
-	uint8_t cmd;
-	uint8_t param;
-	uint8_t ret;
-
-	union {
-		struct {
-			const uint8_t *rom;
-			uint8_t remaining_length;
-		} game_name;
-	} ctx;
-};
-
-union cart_rtc
-{
-	struct __attribute__ ((__packed__))
-	{
-		uint8_t sec;
-		uint8_t min;
-		uint8_t hour;
-		uint8_t yday;
-		uint8_t high;
-	} rtc_bits;
-	uint8_t bytes[5];
-};
-
-
-const uint8_t *roms[] = {
-	libbet_gb,
-	__2048_gb
-	//pokered_gbc
-};
-
-_Noreturn void __not_in_flash_func(play_mgmt_rom)(void);
 
 _Noreturn void __not_in_flash_func(play_rom_only)(const uint8_t *rom)
 {
@@ -222,6 +250,9 @@ _Noreturn void __not_in_flash_func(play_mbc1_rom)(
 				/* Catch invalid addresses here. */
 				if(rx.address < 0xA000 || rx.address > 0xBFFF)
 					continue;
+
+				if(rx.is_write)
+					ram_write++;
 
 				break;
 			}
@@ -375,6 +406,9 @@ _Noreturn void __not_in_flash_func(play_mbc3_rom)(
 				/* Catch invalid addresses here. */
 				if(rx.address < 0xA000 || rx.address > 0xBFFF)
 					continue;
+
+				if(rx.is_write)
+					ram_write++;
 
 				break;
 			}
@@ -659,9 +693,10 @@ static void handle_mgmt_write(struct gb_mgmt_ctx *mgmt, uint16_t address,
 	}
 }
 
+#if USE_MGMT_ROM
 /**
- * This function handles ROM-only games. These games have no banking
- * functionality.
+ * The management ROM has no banking functionality, but performs special
+ * functions instead.
  */
 _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 {
@@ -721,17 +756,17 @@ _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 		}
 	}
 }
+#endif
 
 void core1_main(void)
 {
-	//__asm volatile ("cpsid i");
-
-	//play_mgmt_rom();
+#if USE_MGMT_ROM
+	play_mgmt_rom();
+#endif
+	/* Set the ROM you want to play here. */
 	//check_and_play_rom(libbet_gb);
 	check_and_play_rom(la_gb);
 }
-
-#include <hardware/regs/pio.h>
 
 void init_pio(void)
 {
@@ -742,10 +777,6 @@ void init_pio(void)
 	/* PIO_SM_NCS should be enabled when cart RAM access is expected. */
 	pio_sm_set_enabled(pio0, PIO_SM_NCS, false);
 	pio_sm_set_enabled(pio0, PIO_SM_DO,  true);
-
-	/* Disable input sync to reduce input delay. */
-	/* FIXME: This causes problems. */
-	//pio0->input_sync_bypass = ~pio0->input_sync_bypass;
 
 	return;
 }
@@ -773,13 +804,19 @@ void i2cDMA(i2c_inst_t *i2c, unsigned count, uint8_t *buf)
 }
 #endif
 
+static ALWAYS_INLINE void busy_wait_us_31(uint32_t delay_us)
+{
+	// we only allow 31 bits
+	uint32_t start = timer_hw->timerawl;
+	while (timer_hw->timerawl - start < delay_us)
+		tight_loop_contents();
+}
+
 _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 {
 	/* If this game has no save data (does not use cart RAM) then sleep this
 	 * core forever to save power. */
-#if 1
 	if(ram_sz == 0)
-#endif
 	{
 		/* Sleep forever. */
 		__asm volatile ("cpsid i");
@@ -791,7 +828,7 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 
 	while(1)
 	{
-#if 1
+#if 0
 		uint8_t conf = IO_EXP_INPUT_PORT;
 		uint8_t rx;
 
@@ -804,7 +841,7 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 		/* If button is pressed, save and power off. */
 		if((rx & 0b0010))
 			continue;
-#endif
+
 		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
 			ram_sz + 2, false);
 
@@ -817,6 +854,20 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 			__wfi();
 		//sleep_ms(512);
 		//gb_power(GB_POWER_ON);
+#else
+
+		/* Save to FRAM every 1ms.
+		 * Where each byte has an endurance of 10^12 writes, the FRAM
+		 * is expected to last for at least 1902 years. */
+		busy_wait_us_31(1*1024);
+
+		if(ram_write == 0)
+			continue;
+
+		ram_write = 0;
+		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
+			ram_sz + 2, false);
+#endif
 	}
 }
 
