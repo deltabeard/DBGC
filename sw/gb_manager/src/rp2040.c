@@ -926,6 +926,22 @@ int main(void)
 	 * in reset. */
 	gb_power(GB_POWER_OFF);
 
+#if 1
+	{
+		uint8_t conf = IO_EXP_INPUT_PORT;
+		uint8_t rx;
+
+		i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, &conf,
+			sizeof(conf), false);
+		i2c_read_blocking(i2c_default, I2C_PCA9536_ADDR, &rx,
+			sizeof(rx), false);
+
+		/* If button is pressed, go to programming mode. */
+		if((rx & 0b0010) == 0)
+			reset_usb_boot(0, 0);
+	}
+#endif
+
 	init_pio();
 	begin_playing();
 
