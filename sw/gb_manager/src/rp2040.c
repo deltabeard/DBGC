@@ -17,6 +17,7 @@
 
 #include <sys/cdefs.h>
 #include <stdlib.h>
+#include <string.h>
 #include <hardware/i2c.h>
 #include <hardware/pio.h>
 #include <hardware/vreg.h>
@@ -329,7 +330,7 @@ _Noreturn void __not_in_flash_func(play_mbc1_rom)(
 		case 0x1:
 		case 0x2:
 		case 0x3:
-			data = rom[address];
+			data = *((uint8_t *)XIP_SRAM_BASE + address);
 			break;
 
 		case 0x4:
@@ -486,7 +487,8 @@ _Noreturn void __not_in_flash_func(play_mbc3_rom)(
 		case 0x1:
 		case 0x2:
 		case 0x3:
-			data = rom[address];
+			//data = rom[address];
+			data = *((uint8_t *)XIP_SRAM_BASE + address);
 			break;
 
 		case 0x4:
@@ -602,8 +604,6 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 		num_rom_banks_mask = num_rom_banks_lut[rom[bank_count_location]] - 1;
 	}
 
-	multicore_fifo_push_blocking(num_ram_banks);
-
 	/* Disable XIP Cache.
 	 * This is done after using I2C, as that is read from flash by the
 	 * pico-sdk. */
@@ -611,6 +611,11 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 
 	/* Force the ROM to not use the XIP cache. */
 	rom += (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
+
+	/* Copy Bank0 to XIP Cache-as-SRAM. */
+	memcpy((uint32_t *)XIP_SRAM_BASE, (uint32_t *)rom, ROM_BANK_SIZE);
+
+	multicore_fifo_push_blocking(num_ram_banks);
 
 	switch(mbc)
 	{
@@ -762,10 +767,11 @@ void core1_main(void)
 {
 #if USE_MGMT_ROM
 	play_mgmt_rom();
-#endif
+#else
 	/* Set the ROM you want to play here. */
 	//check_and_play_rom(libbet_gb);
 	check_and_play_rom(la_gb);
+#endif
 }
 
 void init_pio(void)
@@ -928,6 +934,7 @@ int main(void)
 		uint32_t num_ram_banks;
 		uint32_t ram_sz;
 
+		/* Wait for Core1 to initialise. */
 		num_ram_banks = multicore_fifo_pop_blocking();
 		ram_sz = num_ram_banks * CRAM_BANK_SIZE;
 		gb_power(GB_POWER_ON);
