@@ -636,6 +636,7 @@ err:
 	reset_usb_boot(0, 0);
 }
 
+#if USE_MGMT_ROM
 ALWAYS_INLINE
 static void handle_mgmt_write(struct gb_mgmt_ctx *mgmt, uint16_t address,
 	uint8_t data)
@@ -693,7 +694,6 @@ static void handle_mgmt_write(struct gb_mgmt_ctx *mgmt, uint16_t address,
 	}
 }
 
-#if USE_MGMT_ROM
 /**
  * The management ROM has no banking functionality, but performs special
  * functions instead.
