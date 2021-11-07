@@ -434,12 +434,23 @@ _Noreturn void __not_in_flash_func(play_mbc3_rom)(
 
 			case 0x2:
 			case 0x3:
-				selected_rom_bank = data & 0x7F;
+				selected_rom_bank = data;
 
-				if(!selected_rom_bank)
+				/* Selecting ROM Bank 0 actually selects Bank
+				 * 1. */
+				if(UNLIKELY(selected_rom_bank == 0))
+				{
+					/* Maxking ROM banks isn't required
+					 * here because we know ROM bank 1 is
+					 * always available. */
 					selected_rom_bank++;
-
-				selected_rom_bank = selected_rom_bank & num_rom_banks_mask;
+				}
+				else
+				{
+					/* Mask ROM banks. */
+					selected_rom_bank = selected_rom_bank
+						& num_rom_banks_mask;
+				}
 				break;
 
 			case 0x4:
