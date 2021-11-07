@@ -156,13 +156,6 @@ void func_framdump(const char *cmd)
 	}
 
 	{
-		uint32_t irq;
-		irq = save_and_disable_interrupts();
-		printf("IRQ: %08lX\n", irq);
-		restore_interrupts(irq);
-	}
-
-	{
 		uint8_t rx[32];
 		size_t transferred = 0;
 
@@ -170,12 +163,11 @@ void func_framdump(const char *cmd)
 		{
 			i2c_read_blocking(i2c_default, I2C_MB85RC256V_ADDR, rx,
 				sizeof(rx), true);
-			printf("%6d:", transferred);
-			for(uint8_t i = 0; i < sizeof(rx); i++)
+
+			/* To convert hex dump to original contents, use the
+			 * command `xxd -ps -r in.hex out.raw`. */
+			for(unsigned i = 0; i < sizeof(rx); i++)
 			{
-				printf(" %02X", rx[i++]);
-				printf("%02X", rx[i++]);
-				printf("%02X", rx[i++]);
 				printf("%02X", rx[i]);
 			}
 
@@ -184,9 +176,8 @@ void func_framdump(const char *cmd)
 
 			if(transferred % 1024 == 0)
 			{
-				printf("PAGER: ");
-				(void) getchar();
-				printf("\n");
+				/* Required to stop corruption in Putty/KiTTY.*/
+				sleep_ms(1);
 			}
 		}
 	}
