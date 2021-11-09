@@ -102,7 +102,7 @@ static uint8_t *const ram = &i2c_ram[2];
 /* Number of writes to cartridge RAM (battery backed RAM) since last sync
  * with FRAM. This should reduce FRAM writes and battery power a bit.
  * TODO: Change this to atomics. */
-static volatile uint_fast8_t ram_write = 0;
+static int ram_write = 0;
 
 /**
  * Turn the Game Boy on or off.
@@ -253,7 +253,7 @@ _Noreturn void __not_in_flash_func(play_mbc1_rom)(
 					continue;
 
 				if(rx.is_write)
-					ram_write++;
+					__atomic_store_n(&ram_write, 1, __ATOMIC_SEQ_CST);
 
 				break;
 			}
@@ -409,7 +409,7 @@ _Noreturn void __not_in_flash_func(play_mbc3_rom)(
 					continue;
 
 				if(rx.is_write)
-					ram_write++;
+					__atomic_store_n(&ram_write, 1, __ATOMIC_SEQ_CST);
 
 				break;
 			}
@@ -440,7 +440,7 @@ _Noreturn void __not_in_flash_func(play_mbc3_rom)(
 				 * 1. */
 				if(UNLIKELY(selected_rom_bank == 0))
 				{
-					/* Maxking ROM banks isn't required
+					/* Masking ROM banks isn't required
 					 * here because we know ROM bank 1 is
 					 * always available. */
 					selected_rom_bank++;
@@ -571,7 +571,6 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 		[0x0E] = -1,
 
 		/* MBC3 */
-		//[0x0F] = -1,-1,-1,-1,-1,
 		[0x0F] = 3, 3, 3, 3, 3,
 
 		/* Everything else is unsupported for now. */
@@ -878,10 +877,10 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 		 * is expected to last for at least 1902 years. */
 		busy_wait_us_31(1*1024);
 
-		if(ram_write == 0)
+		if(__atomic_load_n(&ram_write, __ATOMIC_SEQ_CST) == 0)
 			continue;
 
-		ram_write = 0;
+		__atomic_store_n(&ram_write, 0, __ATOMIC_SEQ_CST);
 		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
 			ram_sz + 2, false);
 #endif
@@ -913,11 +912,14 @@ int main(void)
 	/* Reduce power consumption to stop IO Expander Power-On Reset Errata. */
 	sleep_ms(10);
 
-	/* Set system clock to 286MHz and flash to 143MHz. */
+	/* Previously used 572000000 VCO, which sets system clock to 286MHz and
+	 * flash to 143MHz.
+	 * A VCO of at least 480000000 is required for single speed games to
+	 * work. This sets system clock to 240MHz and flash to 120MHz. */
 	{
 		/* The value for VCO set here is meant for least power
 		 * consumption. */
-		const unsigned vco = 572000000;
+		const unsigned vco = 480000000;
 		const unsigned div1 = 2, div2 = 1;
 
 		vreg_set_voltage(VREG_VOLTAGE_1_15);
