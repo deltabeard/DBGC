@@ -78,7 +78,7 @@ function(pico_add_verbose_dis_output TARGET)
             )
 endfunction()
 
-add_executable(manager sw/gb_manager/src/rp2040.c sw/gb_manager/src/pico-sdk-ram.c sw/gb_manager/src/pico-sdk-ram.h)
+add_executable(manager sw/gb_manager/src/rp2040.c sw/gb_manager/src/pico-sdk-ram.c)
 add_dependencies(manager gb_manager)
 target_include_directories(manager PRIVATE sw/gb_manager/inc)
 pico_generate_pio_header(manager
