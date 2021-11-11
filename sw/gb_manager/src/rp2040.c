@@ -109,7 +109,7 @@ void gb_power(gb_pwr_e pwr)
 	uint8_t tx[2];
 	tx[0] = IO_EXP_OUTPUT_PORT;
 	tx[1] = 0b11111110 | pwr;
-	i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
+	i2c_write_blocking_ram(i2c_default, I2C_PCA9536_ADDR, tx,
 			   sizeof(tx), false);
 
 	return;
@@ -159,7 +159,7 @@ int init_i2c_peripherals(void)
 		uint8_t tx[2];
 		tx[0] = IO_EXP_DIRECTION;
 		tx[1] = 0b11111010;
-		ret = i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
+		ret = i2c_write_blocking_ram(i2c_default, I2C_PCA9536_ADDR, tx,
 			sizeof(tx), false);
 
 		if(ret == PICO_ERROR_GENERIC)
@@ -167,7 +167,7 @@ int init_i2c_peripherals(void)
 
 		/* Set to input address for future button polling. */
 		tx[0] = IO_EXP_INPUT_PORT;
-		UNUSED_RET i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR,
+		UNUSED_RET i2c_write_blocking_ram(i2c_default, I2C_PCA9536_ADDR,
 			&tx[0], 1, false);
 	}
 
@@ -178,7 +178,7 @@ int init_i2c_peripherals(void)
 		/* Set read address to 0x0000. */
 		tx[0] = 0x00;
 		tx[1] = 0x00;
-		ret = i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, tx,
+		ret = i2c_write_blocking_ram(i2c_default, I2C_MB85RC256V_ADDR, tx,
 			sizeof(tx), true);
 
 		if(ret == PICO_ERROR_GENERIC)
@@ -802,7 +802,7 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 		uint8_t rx;
 
 		//sleep_ms(16);
-		i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, &conf,
+		i2c_write_blocking_ram(i2c_default, I2C_PCA9536_ADDR, &conf,
 			sizeof(conf), false);
 		i2c_read_blocking(i2c_default, I2C_PCA9536_ADDR, &rx,
 			sizeof(rx), false);
@@ -811,7 +811,7 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 		if((rx & 0b0010))
 			continue;
 
-		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
+		i2c_write_blocking_ram(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
 			ram_sz + 2, false);
 
 		/* The Game Boy powers off to signify that saving was
@@ -898,7 +898,7 @@ int main(void)
 		uint8_t conf = IO_EXP_INPUT_PORT;
 		uint8_t rx;
 
-		i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, &conf,
+		i2c_write_blocking_ram(i2c_default, I2C_PCA9536_ADDR, &conf,
 			sizeof(conf), false);
 		i2c_read_blocking(i2c_default, I2C_PCA9536_ADDR, &rx,
 			sizeof(rx), false);
