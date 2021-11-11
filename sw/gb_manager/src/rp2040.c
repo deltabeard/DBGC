@@ -97,9 +97,6 @@ const uint8_t *roms[] = {
 static uint8_t i2c_ram[32770] = { 0x00, 0x00 };
 /* Pointer to the first byte of where the game will save data. */
 static uint8_t *const ram = &i2c_ram[2];
-/* Number of writes to cartridge RAM (battery backed RAM) since last sync
- * with FRAM. This should reduce FRAM writes and battery power a bit. */
-static int ram_write = 0;
 
 /**
  * Turn the Game Boy on or off.
@@ -194,6 +191,31 @@ out:
 	return ret;
 }
 
+ALWAYS_INLINE static void req_sync_fram(void)
+{
+	static uint32_t last_time = 0;
+	const uint32_t threshold_us = 16 * 1024; /* 16ms threshold */
+	uint32_t new_time;
+	uint32_t diff;
+
+	new_time = time_us_32();
+	diff = new_time - last_time;
+
+	/* Don't do anything if the last sync occurred within the threshold
+	 * time. */
+	if(diff < threshold_us)
+	{
+		return;
+	}
+
+	/* Save the current time for next time. */
+	last_time = new_time;
+
+	/* On overflow, diff will be larger than the threshold. */
+	/* Signal to the second core to record data to FRAM. */
+	__sev();
+}
+
 _Noreturn void __not_in_flash_func(play_rom_only)(const uint8_t *rom)
 {
 	while(1)
@@ -250,7 +272,7 @@ _Noreturn void __not_in_flash_func(play_mbc1_rom)(
 					continue;
 
 				if(rx.is_write)
-					__atomic_store_n(&ram_write, 1, __ATOMIC_SEQ_CST);
+					req_sync_fram();
 
 				break;
 			}
@@ -406,7 +428,7 @@ _Noreturn void __not_in_flash_func(play_mbc3_rom)(
 					continue;
 
 				if(rx.is_write)
-					__atomic_store_n(&ram_write, 1, __ATOMIC_SEQ_CST);
+					req_sync_fram();
 
 				break;
 			}
@@ -823,7 +845,7 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 			__wfi();
 		//sleep_ms(512);
 		//gb_power(GB_POWER_ON);
-#elif 1
+#elif 0
 
 		/* Save to FRAM every 1ms.
 		 * Where each byte has an endurance of 10^12 writes, the FRAM
@@ -836,7 +858,12 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 		__atomic_store_n(&ram_write, 0, __ATOMIC_SEQ_CST);
 		i2c_write_blocking_ram(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
 			ram_sz + 2, false);
-
+#elif 1
+		/* Wait for event. */
+		__wfe();
+		/* Push save data to FRAM. */
+		i2c_write_blocking_ram(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
+			ram_sz + 2, false);
 #endif
 	}
 }
