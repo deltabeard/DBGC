@@ -612,11 +612,6 @@ void __no_inline_not_in_flash_func(check_and_play_rom)(const uint8_t *rom)
 		num_rom_banks_mask = num_rom_banks_lut[rom[bank_count_location]] - 1;
 	}
 
-	/* Disable XIP Cache.
-	 * This is done after using I2C, as that is read from flash by the
-	 * pico-sdk. */
-	xip_ctrl_hw->ctrl &= ~XIP_CTRL_EN_BITS;
-
 	/* Force the ROM to not use the XIP cache. */
 	rom += (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
 
@@ -650,82 +645,43 @@ err:
 }
 
 #if USE_MGMT_ROM
-ALWAYS_INLINE
-static void handle_mgmt_write(struct gb_mgmt_ctx *mgmt, uint16_t address,
-	uint8_t data)
-{
-	switch(address)
-	{
-	case ADDR_NEW_CMD:
-		mgmt->cmd = data;
-		switch(mgmt->cmd)
-		{
-		case CART_CMD_NOP:
-			mgmt->ret = 0;
-			mgmt->param = 0;
-			break;
-
-		case CART_CMD_GET_NUMBER_OF_GAMES:
-			mgmt->ret = ARRAYSIZE(roms);
-			break;
-
-		case CART_CMD_GET_GAME_NAME:
-			mgmt->ctx.game_name.rom = roms[mgmt->param];
-			/* Find length of ROM title. */
-			if(mgmt->ctx.game_name.rom[ROM_OLD_LICENSE_LOC] == 0x33)
-				mgmt->ctx.game_name.remaining_length = 10;
-			else
-				mgmt->ctx.game_name.remaining_length = 14;
-
-			mgmt->ctx.game_name.rom =
-				&roms[mgmt->param][ROM_TITLE_LOC];
-			mgmt->ret = *(mgmt->ctx.game_name.rom++);
-			break;
-
-		case CART_CMD_PLAY_GAME:
-			if(mgmt->param < ARRAYSIZE(roms))
-			{
-				check_and_play_rom(roms[mgmt->param]);
-				UNREACHABLE();
-			}
-			break;
-
-		case CART_CMD_UPGRADE:
-			reset_usb_boot(0, 0);
-			UNREACHABLE();
-		}
-		break;
-
-	case ADDR_CMD_PARAM:
-		mgmt->param = data;
-		break;
-
-	default:
-	case ADDR_CMD_RET:
-		/* Not a valid write. */
-		break;
-	}
-}
-
 /**
  * The management ROM has no banking functionality, but performs special
  * functions instead.
  */
 _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 {
-	union gb_bus_rx rx = { .raw = 0 };
-	struct gb_mgmt_ctx mgmt = { 0 };
-	const uint8_t *rom = gb_manager_gb;
+	const uint8_t *rom_flash = gb_manager_gb + (XIP_NOCACHE_NOALLOC_BASE - XIP_BASE);
+	uint8_t *rom = (uint8_t *)XIP_SRAM_BASE;
 
-	/* ROM only game does not use cart RAM. */
-	//pio_sm_set_enabled(pio0, PIO_SM_NCS, false);
+	memset(rom, 0xFF, ROM_BANK_SIZE);
+	memcpy(rom, rom_flash, gb_manager_gb_len);
+
+	rom[ADDR_NUMBER_OF_GAMES] = ARRAYSIZE(roms);
+	for(unsigned i = 0; i < ARRAYSIZE(roms); i++)
+	{
+		uint8_t *targ_addr = (uint8_t *)(ADDR_GET_GAME_NAME);
+		uint8_t name_len = 14;
+		const uint8_t *game = roms[i];
+
+		/* Shift to correct game name offset. */
+		targ_addr += (i << 4);
+		if(game[ROM_OLD_LICENSE_LOC] == 0x33)
+			name_len = 10;
+
+		memcpy(targ_addr, &game[ROM_TITLE_LOC], name_len);
+		targ_addr[++name_len] = '\0';
+	}
+
+	multicore_fifo_push_blocking(0);
 
 	while(1)
 	{
 		/* Only read the address, which is stored in the most
 		 * significant two bytes of the RX FIFO. */
-		io_ro_32 *rx_sm_a15 = (io_ro_32 *) &pio0->rxf[PIO_SM_A15];
+		io_ro_32 *rx_sm_a15 = &pio0->rxf[PIO_SM_A15];
 		io_wo_8 *tx_sm_do = (io_wo_8 *) &pio0->txf[PIO_SM_DO];
+		union gb_bus_rx rx;
 		uint16_t address;
 		uint8_t data;
 
@@ -736,49 +692,49 @@ _Noreturn void __no_inline_not_in_flash_func(play_mgmt_rom)(void)
 		rx.raw = *rx_sm_a15;
 		address = rx.address;
 
+#if 0
 		if(UNLIKELY(rx.is_write))
 		{
 			data = rx.data;
-			handle_mgmt_write(&mgmt, address, data);
-			continue;
-		}
-
-		if(UNLIKELY(address == ADDR_NEW_CMD))
-		{
-			*tx_sm_do = mgmt.cmd;
-		}
-		else if(UNLIKELY(address == ADDR_CMD_RET))
-		{
-			*tx_sm_do = mgmt.ret;
-			if(mgmt.cmd == CART_CMD_GET_GAME_NAME)
+			switch(address)
 			{
-				if(mgmt.ctx.game_name.remaining_length)
-				{
-					mgmt.ctx.game_name.remaining_length--;
-					mgmt.ret = *(mgmt.ctx.game_name.rom++);
-				}
-				else
-					mgmt.ret = '\0';
+			/* Play game. */
+			case 0x2001:
+				/* This shouldn't happen. */
+				if(data > ARRAYSIZE(roms))
+					continue;
+
+				check_and_play_rom(roms[data]);
+				UNREACHABLE();
+
+			/* Firmware upgrade. */
+			case 0x2002:
+				reset_usb_boot(0, 0);
+				UNREACHABLE();
+
+			default:
+				continue;
 			}
 		}
-		else
-		{
-			/* On any other address, or if the command is NOP, then
-			 * read the ROM data. */
-			*tx_sm_do = rom[address];
-		}
+#endif
+		*tx_sm_do = rom[address];
 	}
 }
 #endif
 
 void core1_main(void)
 {
+	/* Disable XIP Cache.
+	 * This is done after using I2C, as that is read from flash by the
+	 * pico-sdk. */
+	xip_ctrl_hw->ctrl &= ~XIP_CTRL_EN_BITS;
+
 #if USE_MGMT_ROM
 	play_mgmt_rom();
 #else
 	/* Set the ROM you want to play here. */
-	//check_and_play_rom(libbet_gb);
-	check_and_play_rom(la_gb);
+	check_and_play_rom(libbet_gb);
+	//check_and_play_rom(gb_manager_gb);
 #endif
 }
 
@@ -868,7 +824,7 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 			__wfi();
 		//sleep_ms(512);
 		//gb_power(GB_POWER_ON);
-#else
+#elif 1
 
 		/* Save to FRAM every 1ms.
 		 * Where each byte has an endurance of 10^12 writes, the FRAM

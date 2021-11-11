@@ -23,8 +23,7 @@ if(NOT DEFINED ENV{GBDK_C_COMPILER})
     set(ENV{GBDK_C_COMPILER} "$ENV{GBDK_SDK_DIR}/bin/lcc")
 endif()
 
-set(GBDK_LINKER_OPTIONS -Wa-l -Wl-m -Wl-j -Wm-p -Wm-ynGBMGR -Wl-yt0
-        -D_loop_forever_ram=0xD000 -Wl-g_loop_forever_ram=0xD000)
+set(GBDK_LINKER_OPTIONS -Wa-l -Wl-m -Wl-j -Wm-p -Wm-ynGBMGR -Wl-yt0)
 add_custom_target(gb_manager ALL
         DEPENDS ${DBGC_BINARY_DIR}/gb_manager.gb
                 ${DBGC_BINARY_DIR}/gb_manager.asm
