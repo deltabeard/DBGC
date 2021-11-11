@@ -98,8 +98,7 @@ static uint8_t i2c_ram[32770] = { 0x00, 0x00 };
 /* Pointer to the first byte of where the game will save data. */
 static uint8_t *const ram = &i2c_ram[2];
 /* Number of writes to cartridge RAM (battery backed RAM) since last sync
- * with FRAM. This should reduce FRAM writes and battery power a bit.
- * TODO: Change this to atomics. */
+ * with FRAM. This should reduce FRAM writes and battery power a bit. */
 static int ram_write = 0;
 
 /**
