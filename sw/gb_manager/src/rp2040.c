@@ -32,11 +32,13 @@
 #include "comms.pio.h"
 #include <cart.h>
 #include <generic.h>
-#include <pico-sdk-ram.h>
 
 /* ROMs */
 #include <gb_manager.gb.h>
 #include <libbet.gb.h>
+#include <2048.gb.h>
+#include <mbc3_ram_viewer.gb.h>
+#include <la.gb.h>
 
 typedef enum {
 	IO_EXP_INPUT_PORT = 0,
@@ -834,9 +836,8 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 			continue;
 
 		__atomic_store_n(&ram_write, 0, __ATOMIC_SEQ_CST);
-		i2c_write_blocking_ram(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
+		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
 			ram_sz + 2, false);
-
 #endif
 	}
 }
