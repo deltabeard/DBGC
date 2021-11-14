@@ -98,6 +98,7 @@ pico_enable_stdio_uart(manager 0)
 pico_add_verbose_dis_output(manager)
 pico_add_bin_output(manager)
 pico_add_uf2_output(manager)
+pico_set_binary_type(manager copy_to_ram)
 
 add_executable(verify sw/gb_manager/src/verify.c)
 add_dependencies(verify gb_manager)

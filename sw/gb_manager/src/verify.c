@@ -71,7 +71,7 @@ static const struct func_map map[] = {
 	{ "RTC TEMP",	"Read temperature from RTC",		func_rtctemp	},
 	{ "RTC READ",	"Read date and time from RTC and set internal RTC",
 								func_rtcread	},
-	{ "RTC WRITE",	"Write date and time to internal RTC and set external RTC \n"
+	{ "RTC WRITE",	"Set date and time to RTC \n"
 			"\t'RTC WRITE <DOTW>:<DAY>/<MONTH>/<YEAR> <HOUR>:<MIN>:<SEC>'",
 			      					func_rtcwrite	},
 	{ "FRAM DUMP",	"Dump full contents of 32KiB FRAM",	func_framdump	},
@@ -80,7 +80,6 @@ static const struct func_map map[] = {
 	{ "BTN",	"Get button status",			func_btn	},
 	{ "GB",		"Turn GB on (0) or off (1)\n"
 			       "\t'GB 1'",			func_gb		},
-	{ "DATE",	"Read date and time from internal RTC",	func_date	},
 	{ "CLOCK",	"Set CPU clock speed",		func_set_clock	},
 	{ "REBOOT",	"Reboot to USBBOOT",		func_reboot 	}
 };
@@ -259,52 +258,21 @@ uint8_t decToBcd(uint8_t val)
 void func_rtcwrite(const char *cmd)
 {
 	int ret;
-	datetime_t dt;
 	uint8_t tx[8];
 
 	tx[0] = RTC_SEC;
 
 	//RTC WRITE <DOTW>:<DAY>/<MONTH>/<YEAR> <HOUR>:<MIN>:<SEC>
-	ret = sscanf(cmd, "RTC WRITE %hhd:%hhd/%hhd/%hd %hhd:%hhd:%hhd",
-		&dt.dotw, &dt.day, &dt.month, &dt.year,
-		&dt.hour, &dt.min, &dt.sec);
+	ret = sscanf(cmd, "RTC WRITE %hhx:%hhx/%hhx/%hhx %hhx:%hhx:%hhx",
+		&tx[RTC_DAY+1], &tx[RTC_DATE+1], &tx[RTC_MONTH+1],
+		&tx[RTC_YEAR+1], &tx[RTC_HOUR+1], &tx[RTC_MIN+1],
+		&tx[RTC_SEC+1]);
 	if(ret != 7)
 	{
 		printf("sscanf acquired only %d items of %d from string "
 		       "'%s'\n", ret, 7, cmd);
 		return;
 	}
-
-	if(rtc_set_datetime(&dt) == false)
-	{
-		printf("Failed to set internal RTC\n");
-		return;
-	}
-
-	dt.year -= RTC_YEARS_EPOCH;
-	tx[1] = dt.sec;
-	tx[2] = dt.min;
-	tx[3] = dt.hour;
-	tx[4] = dt.dotw + 1;
-	tx[5] = dt.day;
-	tx[6] = dt.month;
-	tx[7] = dt.year;
-
-	for(unsigned i = 1; i < sizeof(tx); i++)
-	{
-		printf("%hd\t", tx[i]);
-		tx[i] = decToBcd(tx[i]);
-	}
-	printf("\n");
-
-	for(unsigned i = 1; i < sizeof(tx); i++)
-	{
-		printf("%#04x\t", tx[i]);
-	}
-	printf("\n");
-
-	/* Set 24-hour bit of hour register. */
-	tx[3] |= 0b01000000;
 
 	ret = i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR,
 		tx, sizeof(tx), false);
@@ -314,7 +282,6 @@ void func_rtcwrite(const char *cmd)
 		return;
 	}
 
-	func_date(NULL);
 	return;
 }
 
@@ -322,8 +289,10 @@ void func_rtcread(const char *cmd)
 {
 	uint8_t tx = RTC_SEC;
 	uint8_t rx[RTC_YEAR + 1];
+	const char *rx_label[] = {
+		"SEC", "MIN", "HOUR", "DAY", "DATE", "MONTH", "YEAR"
+	};
 	int ret;
-	datetime_t dt;
 
 	(void) cmd;
 
@@ -343,49 +312,12 @@ void func_rtcread(const char *cmd)
 		return;
 	}
 
-	dt.sec  = bcd_to_int(rx[RTC_SEC]);
-	dt.min  = bcd_to_int(rx[RTC_MIN]);
-	dt.hour = bcd_to_int(rx[RTC_HOUR] & 0b00111111);
-	dt.dotw = rx[RTC_DAY] - 1;
-	dt.day  = bcd_to_int(rx[RTC_DATE]);
-	dt.month = bcd_to_int(rx[RTC_MONTH] & 0b00011111);
-	dt.year = bcd_to_int(rx[RTC_YEAR]) + RTC_YEARS_EPOCH;
-	/* TODO: Year 3000 problem? */
-
-	rtc_init();
-	if(rtc_set_datetime(&dt) == false)
+	for(unsigned i = 0; i < sizeof(rx); i++)
 	{
-		printf("Datetime is not valid\n");
-		for(unsigned i = 0; i < sizeof(rx); i++)
-			printf("%02x ", rx[i]);
-
-		printf("\n"
-		       "%d %d %d %d %d %d %d\n",
-			dt.sec, dt.min, dt.hour, dt.dotw, dt.day, dt.month,
-			dt.year);
-		return;
+		printf("%s: %02X\n", rx_label[i], rx[i]);
 	}
-
-	func_date(NULL);
 
 	return;
-}
-
-void func_date(const char *cmd)
-{
-	char datetime_buf[256];
-	char *datetime_str = &datetime_buf[0];
-	datetime_t dt;
-
-	(void) cmd;
-
-	if(rtc_get_datetime(&dt) == false)
-	{
-		printf("RTC is not initialised\n");
-		return;
-	}
-	datetime_to_str(datetime_str, sizeof(datetime_buf), &dt);
-	printf("%s\n", datetime_str);
 }
 
 void func_rtctemp(const char *cmd)
@@ -648,11 +580,10 @@ int main(void)
 	/* Reduce power consumption to stop IO Expander Power-On Reset Errata. */
 	sleep_ms(10);
 
-	/* Set system clock to 286MHz and flash to 143MHz. */
 	{
 		/* The value for VCO set here is meant for least power
 		 * consumption. */
-		const unsigned vco = 572000000;
+		const unsigned vco = 512000000; /* 256MHz/128MHz */
 		const unsigned div1 = 2, div2 = 1;
 
 		vreg_set_voltage(VREG_VOLTAGE_1_15);
@@ -670,20 +601,6 @@ int main(void)
 	// Make the I2C pins available to picotool
 	bi_decl_if_func_used(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN,
 		PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
-
-	for(unsigned i = PIO_PHI; i <= PIO_A15; i++)
-	{
-		gpio_set_input_enabled(i, true);
-		/* Disable schmitt triggers on GB Bus. The bus transceivers
-		 * already have schmitt triggers. */
-		gpio_set_input_hysteresis_enabled(i, false);
-	}
-
-	for(unsigned i = PIO_PHI; i <= PIO_DIR; i++)
-	{
-		/* Use fast slew rate for GB Bus. */
-		gpio_set_slew_rate(i, GPIO_SLEW_RATE_FAST);
-	}
 
 	/* Set external RTC configuration. */
 	{

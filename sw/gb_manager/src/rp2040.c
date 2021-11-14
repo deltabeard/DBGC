@@ -36,9 +36,7 @@
 /* ROMs */
 #include <gb_manager.gb.h>
 #include <libbet.gb.h>
-#include <2048.gb.h>
-#include <mbc3_ram_viewer.gb.h>
-#include <la.gb.h>
+#include <pcss.gbc.h>
 
 typedef enum {
 	IO_EXP_INPUT_PORT = 0,
@@ -46,6 +44,30 @@ typedef enum {
 	IO_EXP_INVERSION,
 	IO_EXP_DIRECTION
 } io_exp_reg_e;
+
+typedef enum {
+	RTC_SEC = 0,
+	RTC_MIN,
+	RTC_HOUR,
+	RTC_DAY,
+	RTC_DATE,
+	RTC_MONTH,
+	RTC_YEAR,
+	RTC_ALARM1_SEC,
+	RTC_ALARM1_MIN,
+	RTC_ALARM1_HOUR,
+	RTC_ALARM1_DAY,
+	RTC_ALARM1_DATE,
+	RTC_ALARM2_MIN,
+	RTC_ALARM2_HOUR,
+	RTC_ALARM2_DAY,
+	RTC_ALARM2_DATE,
+	RTC_CONTROL,
+	RTC_CONTROL_STATUS,
+	RTC_CONTROL_AGING,
+	RTC_CONTROL_TEMP_MSB = 0x11,
+	RTC_CONTROL_TEMP_LSB = 0x12
+} rtc_reg;
 
 typedef enum {
 	GB_POWER_OFF = 1,
@@ -72,7 +94,7 @@ union cart_rtc
 		uint8_t high;
 	} rtc_bits;
 	uint8_t bytes[5];
-};
+} rtc;
 
 #if USE_MGMT_ROM
 struct gb_mgmt_ctx {
@@ -145,6 +167,33 @@ void init_gpio_pins(void)
 	}
 }
 
+uint8_t bcd_to_int(uint8_t x)
+{
+	return x - 6 * (x >> 4);
+}
+
+uint_fast16_t get_day_num(uint8_t year, uint8_t month, uint8_t day)
+{
+	uint8_t days_in_month[12] = {
+		31, 28, 31, 30, 31, 30, 31, 30, 31, 30, 31, 30
+	};
+	uint_fast16_t days = 0;
+
+	/* Day must be more than 1 and less than 32.
+	 * Month must be 1 to 12.
+	 * Year must be 0 to 99. */
+
+	for(unsigned i = 0; i < month; i++)
+		days += days_in_month[i];
+
+	if(month > 2 && year % 4 == 0)
+		days++;
+
+	days += day - 1;
+
+	return days;
+}
+
 /**
  * Initialise the I2C peripherals. This also reads save data from the FRAM.
  * \return	PICO_ERROR_GENERIC on error or bytes written.
@@ -171,6 +220,34 @@ int init_i2c_peripherals(void)
 		tx[0] = IO_EXP_INPUT_PORT;
 		UNUSED_RET i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR,
 			&tx[0], 1, false);
+	}
+
+	/* Read time from RTC. */
+	{
+		uint8_t tx = RTC_SEC;
+		uint8_t rx[RTC_YEAR + 1];
+		uint_fast16_t days;
+
+		/* Select second register. */
+		ret = i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR, &tx, 1, false);
+		if(ret == PICO_ERROR_GENERIC)
+			goto out;
+
+		/* Read time values. */
+		ret = i2c_read_blocking(i2c_default, I2C_DS3231M_ADDR, rx, sizeof(rx), false);
+		if(ret == PICO_ERROR_GENERIC)
+			goto out;
+
+
+		days = get_day_num(bcd_to_int(rx[RTC_YEAR]),
+			bcd_to_int(rx[RTC_MONTH]), bcd_to_int(rx[RTC_DAY]));
+
+		rtc.rtc_bits.sec = bcd_to_int(rx[RTC_SEC]);
+		rtc.rtc_bits.min = bcd_to_int(rx[RTC_MIN]);
+		rtc.rtc_bits.hour = bcd_to_int(rx[RTC_HOUR]);
+		rtc.rtc_bits.yday = days & 0xFF;
+		if(days > 0xFF)
+			rtc.rtc_bits.high |= 0x01;
 	}
 
 	/* Read save data from FRAM. */
@@ -376,7 +453,6 @@ _Noreturn void __not_in_flash_func(play_mbc3_rom)(
 	uint8_t enable_cart_ram = 0;
 	/* Cartridge ROM/RAM mode select. */
 	uint8_t cart_mode_select = 0;
-	union cart_rtc rtc = { 0 };
 
 	/* MBC3 allows for the use of external RAM. */
 	//pio_sm_set_enabled(pio0, PIO_SM_NCS, true);
@@ -734,7 +810,7 @@ void core1_main(void)
 	play_mgmt_rom();
 #else
 	/* Set the ROM you want to play here. */
-	check_and_play_rom(libbet_gb);
+	check_and_play_rom(pcss_gbc);
 	//check_and_play_rom(gb_manager_gb);
 #endif
 }
@@ -787,6 +863,7 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 {
 	/* If this game has no save data (does not use cart RAM) then sleep this
 	 * core forever to save power. */
+
 	if(ram_sz == 0)
 	{
 		/* Sleep forever. */
@@ -830,7 +907,9 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 		/* Save to FRAM every 1ms.
 		 * Where each byte has an endurance of 10^12 writes, the FRAM
 		 * is expected to last for at least 1902 years. */
-		busy_wait_us_31(1*1024);
+		//busy_wait_us_31(1*1024);
+
+		sleep_us(2 * 1024);
 
 		if(__atomic_load_n(&ram_write, __ATOMIC_SEQ_CST) == 0)
 			continue;
@@ -860,6 +939,46 @@ __printflike(1, 0)
 dbgc_panic(__unused const char *fmt, ...)
 {
 	reset_usb_boot(0, 0);
+}
+
+bool __no_inline_not_in_flash_func(rtc_callback)(repeating_timer_t *rt)
+{
+	/* Skip if RTC is disabled. */
+	if((rtc.rtc_bits.high & 0x40) != 0)
+		goto out;
+
+	rtc.rtc_bits.sec++;
+	if(rtc.rtc_bits.sec != 60)
+		goto out;
+
+	/* Seconds overflowed.*/
+	rtc.rtc_bits.sec = 0;
+	rtc.rtc_bits.min++;
+	if(rtc.rtc_bits.min != 60)
+		goto out;
+
+	/* Minutes overflowed. */
+	rtc.rtc_bits.min = 0;
+	rtc.rtc_bits.hour++;
+	if(rtc.rtc_bits.hour != 24)
+		goto out;
+
+	/* Hours overflowed. */
+	rtc.rtc_bits.hour = 0;
+	rtc.rtc_bits.yday++;
+	if(rtc.rtc_bits.yday != 0)
+		goto out;
+
+	/* Set 8th bit of day register if lower bits overflowed. */
+	if(rtc.rtc_bits.high & 1)
+	{
+		/* If 8th bit already set, set the overflow bit. */
+		rtc.rtc_bits.high |= 0x80;
+	}
+	rtc.rtc_bits.high ^= 1;
+
+out:
+	return true;
 }
 
 int main(void)
@@ -912,6 +1031,11 @@ int main(void)
 
 	init_pio();
 	begin_playing();
+
+	{
+		static repeating_timer_t rt;
+		add_repeating_timer_us(-1000000, rtc_callback, NULL, &rt);
+	}
 
 	/* Wait until core1 is ready to play. */
 	{
