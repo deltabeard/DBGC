@@ -3234,9 +3234,6 @@
     (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/0d38b0b6-3b7f-4172-8607-292d56733a50"
       (reference "#PWR040") (unit 1) (value "GND") (footprint "")
     )
-    (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/57089959-a800-4c32-9299-7f4da70cca72"
-      (reference "#PWR041") (unit 1) (value "GND") (footprint "")
-    )
     (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/52d3a824-e8a6-4f98-b647-4725b41dc416"
       (reference "#PWR042") (unit 1) (value "~") (footprint "")
     )
@@ -3338,9 +3335,6 @@
     )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/b3809af2-0edd-48fa-ac14-bb60421efa63"
       (reference "#PWR075") (unit 1) (value "GND") (footprint "")
-    )
-    (path "/eee07d0f-9449-488d-9f11-5c82ed827320/9e090fcf-0f07-4e16-9157-6e4a89afca54"
-      (reference "#PWR076") (unit 1) (value "GND") (footprint "")
     )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/b81db770-ba53-482a-9aef-e488a31cc2f5"
       (reference "#PWR077") (unit 1) (value "+3V3") (footprint "")
@@ -3447,9 +3441,6 @@
     (path "/0895623b-cb6f-4914-a55a-ecd79a65b468/84d689d5-ad2c-443c-a798-8796b4132463"
       (reference "D1") (unit 2) (value "D_Dual_CommonCathode_AAK_Split") (footprint "Package_TO_SOT_SMD:SOT-23")
     )
-    (path "/eee07d0f-9449-488d-9f11-5c82ed827320/769ec84c-f94b-444e-b9d4-4ceee53f3b56"
-      (reference "D2") (unit 1) (value "LED") (footprint "LED_SMD:LED_0603_1608Metric")
-    )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/45f5af7e-9674-499b-8716-0480ec314d37"
       (reference "D3") (unit 1) (value "SM4007PL") (footprint "Diode_SMD:D_SOD-123F")
     )
@@ -3507,14 +3498,8 @@
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/bfd02972-e334-4d4b-a800-8832d59cab69"
       (reference "R12") (unit 1) (value "330R") (footprint "Resistor_SMD:R_0603_1608Metric")
     )
-    (path "/eee07d0f-9449-488d-9f11-5c82ed827320/4d9ed3b7-2471-48d7-95b0-075871189a0c"
-      (reference "R13") (unit 1) (value "330R") (footprint "Resistor_SMD:R_0603_1608Metric")
-    )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/d8f9ea02-cc63-4ea7-baaf-aaa07ce1bf03"
       (reference "R14") (unit 1) (value "330R") (footprint "Resistor_SMD:R_0603_1608Metric")
-    )
-    (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/fb6b1352-0296-4e5c-81f4-6eee461a3615"
-      (reference "SW1") (unit 1) (value "SW_DIP_x04") (footprint "Button_Switch_SMD:SW_DIP_SPSTx04_Slide_6.7x11.72mm_W8.61mm_P2.54mm_LowProfile")
     )
     (path "/eee07d0f-9449-488d-9f11-5c82ed827320/305f0a5b-4aa0-42ac-b704-a5999453c06e"
       (reference "SW2") (unit 1) (value "SW_SPST") (footprint "Button_Switch_SMD:SW_SPST_TL3342")
@@ -3540,17 +3525,8 @@
     (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/1027541d-0a82-48f9-83b1-63a6617dcc11"
       (reference "TP7") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_THTPad_D1.0mm_Drill0.5mm")
     )
-    (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/6fa81571-e47f-4eae-9b10-269f460bba9c"
-      (reference "TP8") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
-    )
-    (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/9113a7c0-e644-4c31-b0ac-3fe7e6fbc5eb"
-      (reference "TP9") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
-    )
-    (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/1d35c513-d2a0-4505-8e32-41df915e0af5"
-      (reference "TP10") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
-    )
-    (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/0ade04be-0f0e-4c2e-bbee-5f8c61c0a155"
-      (reference "TP11") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_Pad_D1.0mm")
+    (path "/d16c7687-bde3-41ca-9e25-5c88f02ac569/1f2317a1-98e1-4188-ab91-0736ddf40e0c"
+      (reference "TP12") (unit 1) (value "TestPoint") (footprint "TestPoint:TestPoint_THTPad_D1.0mm_Drill0.5mm")
     )
     (path "/97c12b61-e823-42ef-96a0-22d01b93b953"
       (reference "U1") (unit 1) (value "SN74LVC8T245PW") (footprint "Package_SO:TSSOP-24_4.4x7.8mm_P0.65mm")
