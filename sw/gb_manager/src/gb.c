@@ -1,5 +1,13 @@
 /**
- * GB 2040 CART MANAGER
+ * DBGC Cart Manager for the Game Boy.
+ * Copyright (c) 2021 Mahyar Koshkouei
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted, provided that the above copyright notice and
+ * this permission notice appear in all copies.
+ * THIS SOFTWARE IS PROVIDED 'AS-IS', WITHOUT ANY EXPRESS OR IMPLIED WARRANTY.
+ * IN NO EVENT WILL THE AUTHORS BE HELD LIABLE FOR ANY DAMAGES ARISING FROM
+ * THE USE OF THIS SOFTWARE.
  */
 
 #include <stdio.h>
@@ -57,6 +65,7 @@ struct menu_item
 	} param;
 };
 
+#if 0
 inline void menu_init(struct menu_ctx *menu, struct menu_ctx *parent,
 	const char *title, uint8_t items_nmemb, struct menu_item *items)
 {
@@ -73,22 +82,11 @@ inline void menu_set_items(struct menu_ctx *menu, uint8_t nmemb,
 	menu->items = items;
 }
 
-void loop_forever(void)
-{
-	while(1)
-		__asm__("HALT");
-}
-void loop_forever_end(void) {}
-unsigned char __at _loop_forever_ram ram_buffer[];
-extern void loop_forever_ram();
-#define object_distance(a, b) ((void *)&(b) - (void *)&(a))
-
 void play_game(uint8_t param)
 {
 	disable_interrupts();
-	
-	*(uint8_t *)ADDR_CMD_PARAM = param;
-	*(uint8_t *)ADDR_NEW_CMD = CART_CMD_PLAY_GAME;
+
+	*(uint8_t *)ADDR_PLAY_GAME = param;
 	loop_forever_ram();
 }
 
@@ -114,7 +112,7 @@ _Noreturn void reboot_to_usbboot(uint8_t param)
 	wait_vbl_done();
 	disable_interrupts();
 	
-	*(uint8_t *)ADDR_NEW_CMD = CART_CMD_UPGRADE;
+	*(uint8_t *)ADDR_UPGRADE = 0;
 	loop_forever_ram();
 }
 
@@ -137,8 +135,7 @@ uint8_t fill_play_items(struct menu_item *play_items, uint8_t max_items)
 {
 	uint8_t number_of_games;
 
-	*(uint8_t *)ADDR_NEW_CMD = CART_CMD_GET_NUMBER_OF_GAMES;
-	number_of_games = *(uint8_t *)ADDR_CMD_RET;
+	number_of_games = *(uint8_t *)(ADDR_NUMBER_OF_GAMES);
 
 	if(number_of_games > max_items)
 		number_of_games = max_items;
@@ -146,18 +143,20 @@ uint8_t fill_play_items(struct menu_item *play_items, uint8_t max_items)
 	for(uint8_t i = 0; i < number_of_games; i++)
 	{
 		char *name = &play_items[i].name[0];
+		char *name_src;
+		uint16_t game_n = i;
 		play_items[i].op = MENU_EXEC_FUNC;
 		play_items[i].param.func_param = i;
 		play_items[i].param.func = &play_game;
 
-		*(uint8_t *)ADDR_CMD_PARAM = i;
-		*(uint8_t *)ADDR_NEW_CMD = CART_CMD_GET_GAME_NAME;
+		name_src = (char *)(ADDR_GET_GAME_NAME + (game_n << 4));
 
 		while(1)
 		{
-			char c = *(uint8_t *)ADDR_CMD_RET;
-			*name = c;
+			char c = *name_src;
+			*name = *name_src;
 			name++;
+			name_src++;
 
 			if(c == '\0')
 				break;
@@ -266,17 +265,34 @@ next:
 		key_prev = key;
 	}
 }
+#endif
 
 void main(void)
 {
 	font_t font;
 
-	memcpy(&ram_buffer, (void *)&loop_forever,
-			(uint16_t)object_distance(loop_forever, loop_forever_end));
-
 	/* First, init the font system */
 	font_init();
 	font = font_load(font_ibm);
 
-	menu();
+#if 0
+	{
+		uint8_t number_of_games = *(uint8_t * )(ADDR_NUMBER_OF_GAMES);
+
+		for(uint8_t i = 0; i < number_of_games; i++)
+		{
+			const char *name;
+			uint16_t game_n = i;
+			name = (char *) (ADDR_GET_GAME_NAME + (game_n << 4));
+			puts(name);
+		}
+	}
+#endif
+
+	puts("Test");
+
+	while(1) wait_vbl_done();
+	//loop_forever_ram();
+
+	//menu();
 }

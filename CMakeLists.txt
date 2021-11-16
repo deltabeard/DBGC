@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.13)
 include(pico_sdk_import.cmake)
 
 project(DBGC
-        VERSION 0.1.0.0
+        VERSION 0.3.0.0
         DESCRIPTION "Game Boy Cart using the RP2040 microcontroller"
         HOMEPAGE_URL "https://github.com/deltabeard/DBGC"
         LANGUAGES C CXX)
@@ -23,8 +23,7 @@ if(NOT DEFINED ENV{GBDK_C_COMPILER})
     set(ENV{GBDK_C_COMPILER} "$ENV{GBDK_SDK_DIR}/bin/lcc")
 endif()
 
-set(GBDK_LINKER_OPTIONS -Wa-l -Wl-m -Wl-j -Wm-p -Wm-ynGBMGR -Wl-yt0
-        -D_loop_forever_ram=0xD000 -Wl-g_loop_forever_ram=0xD000)
+set(GBDK_LINKER_OPTIONS -Wa-l -Wl-m -Wl-j -Wm-p -Wm-ynGBMGR -Wl-yt0)
 add_custom_target(gb_manager ALL
         DEPENDS ${DBGC_BINARY_DIR}/gb_manager.gb
                 ${DBGC_BINARY_DIR}/gb_manager.asm
@@ -68,7 +67,7 @@ if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()
 set(CMAKE_C_FLAGS_DEBUG "-g3 -Og -fanalyzer -Wall -Wextra")
-set(CMAKE_C_FLAGS_MINSIZEREL "-g2 -Os -Wall -Wextra -DNDEBUG")
+set(CMAKE_C_FLAGS_MINSIZEREL "-g2 -Os -ffast-math -Wall -Wextra -DNDEBUG")
 set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g2 -Ofast -Wall -Wextra")
 set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELWITHDEBINFO} -DNDEBUG")
 
@@ -87,16 +86,19 @@ pico_generate_pio_header(manager
 target_link_libraries(manager
         pico_stdlib pico_bootrom pico_multicore
         pico_bootsel_via_double_reset
-        hardware_clocks hardware_pll hardware_vreg hardware_i2c hardware_pio)
+        hardware_clocks hardware_pll hardware_vreg hardware_i2c hardware_pio
+        hardware_dma)
 target_compile_definitions(manager PRIVATE
         PARAM_ASSERTIONS_DISABLE_ALL=1
         PICO_ENTER_USB_BOOT_ON_EXIT=1
         PICO_PANIC_FUNCTION=dbgc_panic)
+#pico_set_binary_type(manager copy_to_ram)
 pico_enable_stdio_usb(manager 0)
 pico_enable_stdio_uart(manager 0)
 pico_add_verbose_dis_output(manager)
 pico_add_bin_output(manager)
 pico_add_uf2_output(manager)
+pico_set_binary_type(manager copy_to_ram)
 
 add_executable(verify sw/gb_manager/src/verify.c)
 add_dependencies(verify gb_manager)
@@ -112,6 +114,7 @@ target_link_libraries(verify
         hardware_clocks hardware_i2c hardware_rtc hardware_pio hardware_vreg
         hardware_sync hardware_pll hardware_dma
         pico_binary_info)
+pico_set_binary_type(verify no_flash)
 pico_enable_stdio_usb(verify 1)
 pico_enable_stdio_uart(verify 0)
 pico_add_verbose_dis_output(verify)
