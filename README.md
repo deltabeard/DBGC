@@ -4,18 +4,16 @@ A reprogrammable Game Boy cartridge that utilises the Raspberry Pi RP2040.
 <img alt='Front preview of PCB' src='/hw/front.png' width='25%'> <img alt='Back preview of PCB' src='/hw/back.png' width='25%'>
 
 ## Supported Features
-- Support for No MBC, MBC1 and MBC3 (no support for RTC yet) games.
-- Support for battery-backed SRAM (but saving to FRAM currently doesn't work).
-- Can only play the one game programmed in at compile time.
-
-## Proposed Features
-
-- Supports the Game Boy (DMG), Game Boy Pocket (MGB), Game Boy Color (CGB), and the Game Boy Advance (AGB) in Game Boy Color mode only.
+- Support for No MBC, MBC1 and MBC3 games (but only in single-speed mode).
 - Real Time Clock (RTC) with battery backup.
 - FRAM 32KiB for save support.
 - NOR Flash 16MiB with support upto 8MiB ROM size.
-- Support multiple games on NOR Flash.
+- Can only play the one game programmed in at compile time.
 - USB-C firmware upgrade support.
+
+## Proposed Features
+
+- Support multiple games on NOR Flash.
 - USB-C flash storage explorer to store and retrieve save files and ROMs.
 - USB-C networking support.
 
@@ -32,7 +30,7 @@ The flash storage will be partitioned to allow the user to either support large 
 By utilising RP2040 and TinyUSB features, the USB-C port can act as a networking device, which when attached to a host, will allow the RP2040 to connect to the Internet. Future features will allow supported Game Boy games to make connections to the internet.
 
 ## Notes
-BOM is optimised for purchase from JLCPCB with SMT assembly. The cost of producing a single cart of this revision is approximately £15. This version of the PCB has major errors that can be seen in the [errata.md](https://github.com/deltabeard/DBGC/blob/master/errata.md) document. Do not manufacture PCB version 0.3 or below; instead wait for the next version or the one on the master branch. 
+BOM is optimised for purchase from JLCPCB with SMT assembly. The cost of producing a single cart of this revision is approximately £15. This version of the PCB has major errors that can be seen in the [errata.md](https://github.com/deltabeard/DBGC/blob/master/errata.md) document. **Do not manufacture PCB version 0.3 or below**; instead wait for the next version or the one on the master branch. 
 
 # License
 
@@ -54,13 +52,13 @@ project in an unmodified binary form for testing purposes.
 
 # Showcase
 
-- [Pokemon Polished Crystal](https://github.com/Rangi42/polishedcrystal). An 
+- [Pokemon Polished Crystal](https://github.com/Rangi42/polishedcrystal). A 
   major fan-made upgrade to Pokemon Crystal. Uses MBC3 with battery backed 
   SRAM and Real Time Clock. The version tested had CGB double-speed disabled,
-  which caused minor graphical glitches within the game. DBGC does not 
-  currently support double-speed, so using it to play Polished Crystal will 
-  not result in the intended experience. Non-volatile saving does not 
-  currently work (save data is erased on power off).
+  which caused minor graphical glitches within the game. An effort is made to
+  fix these graphical glitches at https://github.com/deltabeard/polishedcrystal.
+  DBGC does not currently support double-speed, so using it to play
+  Polished Crystal may not result in the intended experience.
 
 ![Pokemon Polished Crystal](https://user-images.githubusercontent.com/3747104/139542854-f9939c75-38e1-47c1-935c-c93735fade4c.jpg)
 
