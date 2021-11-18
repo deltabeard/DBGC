@@ -16,19 +16,21 @@ SECTION "rst38", ROM0[$0038]
 	jp rst38
 
 SECTION "vblank", ROM0[$0040]
-	ret
+	ld a, 0
+	ld [rIF], a
+	reti
 
 SECTION "lcd", ROM0[$0048]
-	ret
+	reti
 
 SECTION "timer", ROM0[$0050]
-	ret
+	reti
 
 SECTION "serial", ROM0[$0058]
-	ret
+	reti
 
 SECTION "joypad", ROM0[$0060]
-	ret
+	reti
 
 SECTION "Header", ROM0[$0100]
 	nop
@@ -41,11 +43,14 @@ Start:
 	ld a, 0
 	ld [rNR52], a
 
+	; Enable VBlank interrupt
+	ld a, IEF_VBLANK
+	ld [rIE], a
+
+	; Enable interrupts
+	ei
 	; Wait for VBlank to occur
-.wait
-	ldh a, [rLY]
-	cp 145
-	jr nz, .wait
+	halt
 
 	; Turn the LCD off
 	ld a, 0
