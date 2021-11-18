@@ -1,21 +1,39 @@
 INCLUDE "hardware.inc"
 
-SECTION "Header", ROM0[$100]
+SECTION "vblank", ROM0[$0040]
+	ret
 
-	jp EntryPoint
+SECTION "lcd", ROM0[$0048]
+	ret
+
+SECTION "timer", ROM0[$0050]
+	ret
+
+SECTION "serial", ROM0[$0058]
+	ret
+
+SECTION "joypad", ROM0[$0060]
+	ret
+
+SECTION "Header", ROM0[$0100]
+	nop
+	jp Start
 
 	ds $150 - @, 0 ; Make room for the header
 
-EntryPoint:
+Start:
+	nop
+	di
+
 	; Shut down audio circuitry
 	ld a, 0
 	ld [rNR52], a
 
-	; Do not turn the LCD off outside of VBlank
-WaitVBlank:
-	ld a, [rLY]
-	cp 144
-	jp c, WaitVBlank
+	; Wait for VBlank to occur
+.wait
+	ldh a, [rLY]
+	cp 145
+	jr nz, .wait
 
 	; Turn the LCD off
 	ld a, 0
@@ -56,8 +74,8 @@ CopyTilemap:
 	ld [rBGP], a
 
 Done:
+	halt
 	jp Done
-
 
 SECTION "Tile data", ROM0
 
