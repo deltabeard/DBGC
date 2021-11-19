@@ -53,37 +53,23 @@ Start:
 	halt
 
 	; Turn the LCD off
-	ld a, 0
+	ld a, LCDCF_OFF
 	ld [rLCDC], a
 
 	; Copy the tile data
+	ld hl, _VRAM
 	ld de, Tiles
-	ld hl, $8000
 	ld bc, TilesEnd - Tiles
-CopyTiles:
-	ld a, [de]
-	ld [hli], a
-	inc de
-	dec bc
-	ld a, b
-	or a, c
-	jp nz, CopyTiles
+	call memcpy16
 
 	; Copy the tilemap
+	ld hl, _SCRN0
 	ld de, Tilemap
-	ld hl, $9800
 	ld bc, TilemapEnd - Tilemap
-CopyTilemap:
-	ld a, [de]
-	ld [hli], a
-	inc de
-	dec bc
-	ld a, b
-	or a, c
-	jp nz, CopyTilemap
+	call memcpy16
 
 	; Turn the LCD on
-	ld a, LCDCF_ON | LCDCF_BGON | LCDCF_BG8000
+	ld a, LCDCF_ON | LCDCF_BGON | LCDCF_BG8000 | LCDCF_BG9800
 	ld [rLCDC], a
 
 	; During the first (blank) frame, initialize display registers
@@ -94,12 +80,34 @@ Loop_Forever:
 	halt
 	jp Loop_Forever
 
+; This memcpy routine is taken from gb-vwf: github.com/ISSOtm/gb-vwf
+; Copyright (c) 2018-2020 Eldred Habert
+SECTION "memcpy16", ROM0
+; Copies count bytes from source to destination.
+; hl = destination address
+; de = source address
+; bc = byte count
+memcpy16::
+	; Increment B if C is nonzero
+	dec bc
+	inc b
+	inc c
+.loop
+	ld a, [de]
+	ld [hli], a
+	inc de
+	dec c
+	jr nz, .loop
+	dec b
+	jr nz, .loop
+	ret
+
+; Print error text if rst38 is ever executed and hang forever.
 rst38:
 	DBGMSG "Fatal Error"
 	jp Loop_Forever
 
 SECTION "Tile data", ROM0
-
 Tiles:
 	db $00,$ff, $00,$ff, $00,$ff, $00,$ff, $00,$ff, $00,$ff, $00,$ff, $00,$ff
 	db $00,$ff, $00,$80, $00,$80, $00,$80, $00,$80, $00,$80, $00,$80, $00,$80

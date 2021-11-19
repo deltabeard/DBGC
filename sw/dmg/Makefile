@@ -13,3 +13,6 @@ hello-world.o: hello-world.asm
 
 %.o: %.asm
 	$(RGBASM) -Wall -Wextra --preserve-ld --output $@ $<
+
+clean:
+	$(RM) *.gb *.o *.sym *.map

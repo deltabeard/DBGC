@@ -26,6 +26,9 @@
 ;* Rev 2.9 - 28-Feb-20 : Added utility rP1 constants
 ;* Rev 3.0 - 27-Aug-20 : Register ordering, byte-based sizes, OAM additions, general cleanup (Blitter Object)
 ;* Rev 4.0 - 03-May-21 : Updated to use RGBDS 0.5.0 syntax, changed IEF_LCDC to IEF_STAT (Eievui)
+;* Rev 4.1 - 16-Aug-21 : Added more flags, bit number defines, and offset constants for OAM and window positions (rondnelson99)
+;* Rev 4.2 - 04-Sep-21 : Added CH3- and CH4-specific audio registers flags (ISSOtm)
+;* Rev 4.3 - 07-Nov-21 : Deprecate VRAM address constants (Eievui)
 
 IF __RGBDS_MAJOR__ == 0 && __RGBDS_MINOR__ < 5
     FAIL "This version of 'hardware.inc' requires RGBDS version 0.5.0 or later."
@@ -39,15 +42,12 @@ DEF HARDWARE_INC EQU 1
 MACRO rev_Check_hardware_inc
 ;NOTE: REVISION NUMBER CHANGES MUST BE ADDED
 ;TO SECOND PARAMETER IN FOLLOWING LINE.
-    IF  \1 > 4.0 ;PUT REVISION NUMBER HERE
+    IF  \1 > 4.2 ;PUT REVISION NUMBER HERE
         WARN    "Version \1 or later of 'hardware.inc' is required."
     ENDC
 ENDM
 
 DEF _VRAM        EQU $8000 ; $8000->$9FFF
-DEF _VRAM8000    EQU _VRAM
-DEF _VRAM8800    EQU _VRAM+$800
-DEF _VRAM9000    EQU _VRAM+$1000
 DEF _SCRN0       EQU $9800 ; $9800->$9BFF
 DEF _SCRN1       EQU $9C00 ; $9C00->$9FFF
 DEF _SRAM        EQU $A000 ; $A000->$BFFF
@@ -103,6 +103,13 @@ DEF rSB EQU $FF01
 ; --
 DEF rSC EQU $FF02
 
+DEF SCF_START  EQU %10000000 ;Transfer Start Flag (1=Transfer in progress, or requested)
+DEF SCF_SPEED  EQU %00000010 ;Clock Speed (0=Normal, 1=Fast) ** CGB Mode Only **
+DEF SCF_SOURCE EQU %00000001 ;Shift Clock (0=External Clock, 1=Internal Clock)
+
+DEF SCB_START  EQU 7
+DEF SCB_SPEED  EQU 1
+DEF SCB_SOURCE EQU 0
 
 ; --
 ; -- DIV ($FF04)
@@ -256,6 +263,9 @@ DEF rAUD2HIGH EQU rNR24
 DEF rNR30 EQU $FF1A
 DEF rAUD3ENA EQU rNR30
 
+DEF AUD3ENA_OFF EQU %00000000
+DEF AUD3ENA_ON  EQU %10000000
+
 
 ; --
 ; -- AUD3LEN/NR31 ($FF1B)
@@ -279,6 +289,11 @@ DEF rAUD3LEN EQU rNR31
 ; --
 DEF rNR32 EQU $FF1C
 DEF rAUD3LEVEL EQU rNR32
+
+DEF AUD3LEVEL_MUTE EQU %00000000
+DEF AUD3LEVEL_100  EQU %00100000
+DEF AUD3LEVEL_50   EQU %01000000
+DEF AUD3LEVEL_25   EQU %01100000
 
 
 ; --
@@ -338,11 +353,14 @@ DEF rAUD4ENV EQU rNR42
 DEF rNR43 EQU $FF22
 DEF rAUD4POLY EQU rNR43
 
+DEF AUD4POLY_15STEP EQU %00000000
+DEF AUD4POLY_7STEP  EQU %00001000
+
 
 ; --
 ; -- AUD4GO/NR44 ($FF23)
 ; --
-; -- Bit 7 -   Inital
+; -- Bit 7 -   Initial (when set, sound restarts)
 ; -- Bit 6 -   Counter/consecutive selection
 ; --
 DEF rNR44 EQU $FF23
@@ -353,10 +371,10 @@ DEF rAUD4GO EQU rNR44
 ; -- AUDVOL/NR50 ($FF24)
 ; -- Channel control / ON-OFF / Volume (R/W)
 ; --
-; -- Bit 7   - Vin->SO2 ON/OFF (Vin??)
-; -- Bit 6-4 - SO2 output level (volume) (# 0-7)
-; -- Bit 3   - Vin->SO1 ON/OFF (Vin??)
-; -- Bit 2-0 - SO1 output level (volume) (# 0-7)
+; -- Bit 7   - Vin->SO2 ON/OFF (left)
+; -- Bit 6-4 - SO2 output level (left speaker) (# 0-7)
+; -- Bit 3   - Vin->SO1 ON/OFF (right)
+; -- Bit 2-0 - SO1 output level (right speaker) (# 0-7)
 ; --
 DEF rNR50 EQU $FF24
 DEF rAUDVOL EQU rNR50
@@ -369,14 +387,14 @@ DEF AUDVOL_VIN_RIGHT EQU %00001000 ; SO1
 ; -- AUDTERM/NR51 ($FF25)
 ; -- Selection of Sound output terminal (R/W)
 ; --
-; -- Bit 7   - Output sound 4 to SO2 terminal
-; -- Bit 6   - Output sound 3 to SO2 terminal
-; -- Bit 5   - Output sound 2 to SO2 terminal
-; -- Bit 4   - Output sound 1 to SO2 terminal
-; -- Bit 3   - Output sound 4 to SO1 terminal
-; -- Bit 2   - Output sound 3 to SO1 terminal
-; -- Bit 1   - Output sound 2 to SO1 terminal
-; -- Bit 0   - Output sound 0 to SO1 terminal
+; -- Bit 7   - Output channel 4 to SO2 terminal (left)
+; -- Bit 6   - Output channel 3 to SO2 terminal (left)
+; -- Bit 5   - Output channel 2 to SO2 terminal (left)
+; -- Bit 4   - Output channel 1 to SO2 terminal (left)
+; -- Bit 3   - Output channel 4 to SO1 terminal (right)
+; -- Bit 2   - Output channel 3 to SO1 terminal (right)
+; -- Bit 1   - Output channel 2 to SO1 terminal (right)
+; -- Bit 0   - Output channel 1 to SO1 terminal (right)
 ; --
 DEF rNR51 EQU $FF25
 DEF rAUDTERM EQU rNR51
@@ -452,6 +470,12 @@ DEF STATF_OAM     EQU  %00000010 ; OAM-RAM is used by system
 DEF STATF_LCD     EQU  %00000011 ; Both OAM and VRAM used by system
 DEF STATF_BUSY    EQU  %00000010 ; When set, VRAM access is unsafe
 
+DEF STATB_LYC     EQU  6
+DEF STATB_MODE10  EQU  5
+DEF STATB_MODE01  EQU  4
+DEF STATB_MODE00  EQU  3
+DEF STATB_LYCF    EQU  2
+DEF STATB_BUSY    EQU  1
 
 ; --
 ; -- SCY ($FF42)
@@ -541,6 +565,8 @@ DEF rWY EQU $FF4A
 ; -- Values of 0-6 and 166 are unreliable due to hardware bugs.
 ; --
 DEF rWX EQU $FF4B
+
+DEF WX_OFS EQU 7 ; add this to a screen position to get a WX position
 
 
 ; --
@@ -695,6 +721,12 @@ DEF IEF_SERIAL EQU %00001000 ; Serial I/O transfer end
 DEF IEF_TIMER  EQU %00000100 ; Timer Overflow
 DEF IEF_STAT   EQU %00000010 ; STAT
 DEF IEF_VBLANK EQU %00000001 ; V-Blank
+
+DEF IEB_HILO   EQU 4
+DEF IEB_SERIAL EQU 3
+DEF IEB_TIMER  EQU 2
+DEF IEB_STAT   EQU 1
+DEF IEB_VBLANK EQU 0
 
 
 ;***************************************************************************
@@ -879,11 +911,14 @@ DEF SCRN_VY_B EQU 32  ; Virtual height of screen in bytes
 ; OAM attributes
 ; each entry in OAM RAM is 4 bytes (sizeof_OAM_ATTRS)
 RSRESET
-DEF OAMA_Y              RB  1   ; y pos
-DEF OAMA_X              RB  1   ; x pos
+DEF OAMA_Y              RB  1   ; y pos plus 16
+DEF OAMA_X              RB  1   ; x pos plus 8
 DEF OAMA_TILEID         RB  1   ; tile id
 DEF OAMA_FLAGS          RB  1   ; flags (see below)
 DEF sizeof_OAM_ATTRS    RB  0
+
+DEF OAM_Y_OFS EQU 16 ; add this to a screen-relative Y position to get an OAM Y position
+DEF OAM_X_OFS EQU 8  ; add this to a screen-relative X position to get an OAM X position
 
 DEF OAM_COUNT           EQU 40  ; number of OAM entries in OAM RAM
 
@@ -918,5 +953,8 @@ ENDM
 ; Deprecated constants. Please avoid using.
 
 DEF IEF_LCDC   EQU %00000010 ; LCDC (see STAT)
+DEF _VRAM8000  EQU _VRAM
+DEF _VRAM8800  EQU _VRAM+$800
+DEF _VRAM9000  EQU _VRAM+$1000
 
     ENDC ;HARDWARE_INC
