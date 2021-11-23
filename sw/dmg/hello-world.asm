@@ -11,28 +11,60 @@ DBGMSG: MACRO
 .end\@:
         ENDM
 
-; RST38 used for catching fatal errors.
-SECTION "rst38", ROM0[$0038]
+; Copies SECTION to the the TARGET address.
+; This macro checks that the size of SECTION is a multiple of 8 bytes.
+; MEMCPY8_SECTION TARGET SECTION
+MACRO MEMCPY8_SECTION
+	ld hl, \1
+	ld de, STARTOF(\2)
+	ld b, SIZEOF(\2)/8
+	ASSERT SIZEOF(\2) % 8 == 0
+	;call memcpy8
+	rst $00
+ENDM
+
+; RST0 used to execute memcpy8. This is a minor optimisation whereby using RST
+; is faster than using the CALL instruction.
+SECTION "RST0: memcpy8", ROM0[$0000]
+; Copies count qwords (8 bytes) from source to destination.
+; Max 255 dwords (2047 bytes).
+; hl = destination address
+; de = source address
+; b  = dword count
+memcpy8::
+.loop
+REPT 8
+	ld a, [de]
+	ld [hli], a
+	inc de
+ENDR
+	dec b
+	jr nz, .loop
+	ret
+
+; RST38 used for catching fatal errors because unused ROM is initialised to
+; 0xFF.
+SECTION "RST38: Fatal Error", ROM0[$0038]
 	jp rst38
 
-SECTION "vblank", ROM0[$0040]
+SECTION "IRQ: VBlank", ROM0[$0040]
 	ld a, 0
 	ld [rIF], a
 	reti
 
-SECTION "lcd", ROM0[$0048]
+SECTION "IRQ: LCD", ROM0[$0048]
 	reti
 
-SECTION "timer", ROM0[$0050]
+SECTION "IRQ: Timer", ROM0[$0050]
 	reti
 
-SECTION "serial", ROM0[$0058]
+SECTION "IRQ: Serial", ROM0[$0058]
 	reti
 
-SECTION "joypad", ROM0[$0060]
+SECTION "IRQ: Joypad", ROM0[$0060]
 	reti
 
-SECTION "Header", ROM0[$0100]
+SECTION "IRQ: Header", ROM0[$0100]
 	nop
 	jp Start
 
@@ -57,16 +89,10 @@ Start:
 	ld [rLCDC], a
 
 	; Copy the tile data
-	ld hl, _VRAM
-	ld de, Tiles
-	ld bc, TilesEnd - Tiles
-	call memcpy16
+	MEMCPY8_SECTION _VRAM,"Tile data"
 
 	; Copy the tilemap
-	ld hl, _SCRN0
-	ld de, Tilemap
-	ld bc, TilemapEnd - Tilemap
-	call memcpy16
+	MEMCPY8_SECTION _SCRN0,"Tilemap"
 
 	; Turn the LCD on
 	ld a, LCDCF_ON | LCDCF_BGON | LCDCF_BG8000 | LCDCF_BG9800
@@ -80,31 +106,9 @@ Loop_Forever:
 	halt
 	jp Loop_Forever
 
-; This memcpy routine is taken from gb-vwf: github.com/ISSOtm/gb-vwf
-; Copyright (c) 2018-2020 Eldred Habert
-SECTION "memcpy16", ROM0
-; Copies count bytes from source to destination.
-; hl = destination address
-; de = source address
-; bc = byte count
-memcpy16::
-	; Increment B if C is nonzero
-	dec bc
-	inc b
-	inc c
-.loop
-	ld a, [de]
-	ld [hli], a
-	inc de
-	dec c
-	jr nz, .loop
-	dec b
-	jr nz, .loop
-	ret
-
 ; Print error text if rst38 is ever executed and hang forever.
 rst38:
-	DBGMSG "Fatal Error"
+	DBGMSG "Fatal: RST38"
 	jp Loop_Forever
 
 SECTION "Tile data", ROM0
