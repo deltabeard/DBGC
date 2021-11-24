@@ -6,7 +6,7 @@ RGBGFX  := rgbgfx
 all: hello-world.gb gen_charmap.exe
 gen_charmap.exe: gen_charmap.o
 hello-world.gb: hello-world.o text.o
-hello-world.o: hello-world.asm F77SMC6_8x8_mini.2bpp
+hello-world.o: hello-world.asm F77SMC6_8x8_mini.1bpp
 text.o: text.asm
 
 %.gb: %.o
