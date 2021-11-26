@@ -15,7 +15,7 @@ text.o: text.asm
 	$(RGBFIX) --validate --title $(@:.gb=) --non-japanese $@
 
 %.o: %.asm
-	$(RGBASM) -Wall -Wextra --preserve-ld --output $@ $<
+	$(RGBASM) -Wall -Wextra --output $@ $<
 
 %.exe: %.o
 	$(CC) -Wall -Os -s -o $@ $<
