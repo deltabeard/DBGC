@@ -150,7 +150,7 @@ ENDR
 	rst $00
 
 	; Write text to Window
-	ld hl, _SCRN1
+	ld hl, _SCRN1 + ((SCRN_X_B - text_window_size) / 2)
 	ld de, text_window
 	ld b, text_window_size
 	rst $00
@@ -160,8 +160,8 @@ ENDR
 	ld [rWY], a
 	ld a, WX_OFS
 	ld [rWX], a
-	; Hide Window on line 9
-	ld a, 9
+	; Hide Window on line 8
+	ld a, 8
 	ld [rLYC], a
 	; Generate STAT interrupt when LYC=LY
 	ld a, STATF_LYC
