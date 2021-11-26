@@ -5,9 +5,8 @@ RGBGFX  := rgbgfx
 
 all: hello-world.gb gen_charmap.exe
 gen_charmap.exe: gen_charmap.o
-hello-world.gb: hello-world.o text.o
+hello-world.gb: hello-world.o
 hello-world.o: hello-world.asm F77SMC6_8x8_mini.1bpp
-text.o: text.asm
 
 %.gb: %.o
 	$(RGBLINK) --dmg --pad 0xFF --nopad --tiny\

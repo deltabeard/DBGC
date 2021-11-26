@@ -29,6 +29,35 @@ MACRO BG_LOC_HL
 	ld hl, _SCRN0 + (\1 + (\2 * SCRN_VX_B))
 ENDM
 
+;; DBGC manager registers
+DEF DBGC_OFF		EQU $7000
+;; R/W RTC registers
+DEF DBGC_RTC		EQU DBGC_OFF
+DEF DBGC_RTC_SEC	EQU DBGC_RTC
+DEF DBGC_RTC_MIN	EQU DBGC_RTC + 1
+DEF DBGC_RTC_HOUR	EQU DBGC_RTC + 2
+DEF DBGC_RTC_DATE	EQU DBGC_RTC + 3
+DEF DBGC_RTC_MON	EQU DBGC_RTC + 4
+DEF DBGC_RTC_DAY	EQU DBGC_RTC + 5
+DEF DBGC_RTC_YEAR	EQU DBGC_RTC + 6
+
+;; RO Constant registers
+; Number of ROMs available to select from
+DEF DBGC_CONST		EQU DBGC_OFF + $10
+DEF DBGC_ROMS		EQU DBGC_CONST + 1
+
+;; ROM Information.
+; ROM selection. R/W
+DEF DBGC_ROM_SEL	EQU DBGC_OFF + $10
+; Play selected ROM. Writing resets the Game Boy immediately. WO
+DEF DBGC_ROM_PLAY	EQU DBGC_ROM_SEL + 1
+; ROM title. RO
+DEF DBGC_ROM_TITLE	EQU DBGC_ROM_SEL + 2
+DEF DBGC_ROM_TITLE_END	EQU DBGC_ROM_TITLE + 16
+
+DEF DBGC_PARAM EQU _RAM
+DEF DBGC_INSTR EQU _RAM+1
+
 ; RST0 used to execute memcpy1. This is a minor optimisation whereby using RST
 ; is faster than using the CALL instruction.
 SECTION "RST0: memcpy1", ROM0[$0000]
@@ -52,9 +81,15 @@ SECTION "RST38: Fatal Error", ROM0[$0038]
 	jp rst38
 
 SECTION "IRQ: VBlank", ROM0[$0040]
+	; Enable Window on new VBlank to draw menu name.
+	ld hl, rLCDC
+	set 5, [hl]
 	reti
 
 SECTION "IRQ: LCD", ROM0[$0048]
+	; Disable Window when this interrupt is called.
+	ld hl, rLCDC
+	res 5, [hl]
 	reti
 
 SECTION "IRQ: Timer", ROM0[$0050]
@@ -67,6 +102,7 @@ SECTION "IRQ: Joypad", ROM0[$0060]
 	reti
 
 SECTION "Header", ROM0[$0100]
+	nop
 	jp main
 
 ds $150 - @, 0 ; Make room for the header
@@ -80,13 +116,15 @@ main:
 	; Initialise variables
 	;ld a, 0 ; a is still 0 here
 	ld [menu_selection], a
+	ld [menu_screen], a
 
-	; Enable VBlank interrupt
-	ld a, IEF_VBLANK
+	; Enable VBlank and STAT interrupts
+	ld a, IEF_VBLANK | IEF_STAT
 	ld [rIE], a
 
 	; Enable interrupts
 	ei
+
 	; Wait for VBlank to occur
 	halt
 
@@ -97,17 +135,13 @@ main:
 	; Copy the tile data
 	UNPACK1BPP_SECTION _VRAM, "Font data"
 
+FOR N,30
 	; Write hello world
-	BG_LOC_HL 0,0
+	BG_LOC_HL 1,N
 	ld de, text_hello
 	ld b, text_hello_size
 	rst $00
-
-	; Write hello world to a different location
-	BG_LOC_HL 1,2
-	ld de, text_hello
-	ld b, text_hello_size
-	rst $00
+ENDR
 
 	; Write lorem ipsum
 	BG_LOC_HL 1,12
@@ -115,28 +149,85 @@ main:
 	ld b, text_lorem_size
 	rst $00
 
+	; Write text to Window
+	ld hl, _SCRN1
+	ld de, text_window
+	ld b, text_window_size
+	rst $00
+
+	; Set Window location
+	ld a, 0
+	ld [rWY], a
+	ld a, WX_OFS
+	ld [rWX], a
+	; Hide Window on line 9
+	ld a, 9
+	ld [rLYC], a
+	; Generate STAT interrupt when LYC=LY
+	ld a, STATF_LYC
+	ld [rSTAT], a
+
 	; Turn the LCD on
-	ld a, LCDCF_ON | LCDCF_BGON | LCDCF_BG8000 | LCDCF_BG9800
+	ld a, LCDCF_ON | LCDCF_BGON | LCDCF_BG8000 | LCDCF_BG9800 | LCDCF_WINON | LCDCF_WIN9C00
 	ld [rLCDC], a
 
-	; During the first (blank) frame, initialize display registers
-	ld a, %00011011
-	ld [rBGP], a
+Main_Loop:
+	;call draw_menu
 
-Loop_Forever:
-	call draw_menu
+	; Wait for VBlank
 	halt
-	jp Loop_Forever
+
+	jr Main_Loop
+
+; Stop executing completely.
+End:
+	; Wait for VBlank
+	halt
+
+	; Disable IRQs
+	ld a, 0
+	ld [rIE], a
+
+.loop
+	halt
+	jr .loop
 
 ; Print error text if rst38 is ever executed and hang forever.
 rst38:
 	DBGMSG "Fatal: RST38"
-	jp Loop_Forever
+	jp End
 
 ; Draw current menu on screen.
 ; No parameters taken.
 draw_menu::
 	ret
+
+; Execute a DBGC instruction.
+; Parameters:
+; b = instruction
+; c = parameter
+; Return value stored in a.
+;exec_dbgc_instruction::
+;	; Wait for VBlank
+;	halt
+;
+;	; Turn the LCD off. This will stop VBlank interrupts.
+;	ld a, LCDCF_OFF
+;	ld [rLCDC], a
+;
+;	ld hl, DBGC_PARAM
+;	ld a, b
+;	ld [hli], a
+;	ld a, c
+;	ld [hli], a
+;
+;	; For each instruction, we wait 16ms for the cart to respond.
+;	halt
+;
+;	; Read return value
+;	ld a, [DBGC_PARAM]
+;
+;	ret
 
 ; Unpack 1bpp tiles to destination.
 ; hl = destination address.
@@ -171,11 +262,13 @@ SECTION "Text", ROM0
 SETCHARMAP custom_map
 	new_str "Hello World!", text_hello
 	new_str "Lorem Ipsum.", text_lorem
+	new_str "Window", text_window
 
 SECTION "Font data", ROM0
 INCBIN "F77SMC6_8x8_mini.1bpp"
 
 SECTION "WRAM", WRAM0
 menu_selection:: db
+menu_screen:: db
 
 SECTION "HRAM", HRAM
