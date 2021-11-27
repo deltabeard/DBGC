@@ -15,5 +15,3 @@ MACRO new_str
 \2_end:
 def \2_size equ \2_end - \2
 ENDM
-
-SETCHARMAP ascii_map
