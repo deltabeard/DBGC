@@ -102,40 +102,52 @@ SECTION "IRQ: Joypad", ROM0[$0060]
 	reti
 
 SECTION "Header", ROM0[$0100]
-	nop
-	jp main
+	; Enable interrupts
+	ei
+	; Start main code
+	jp start
 
 ds $150 - @, 0 ; Make room for the header
 
-SECTION "Main", ROM0[$0150]
-main:
+SECTION "Start", ROM0[$0150]
+start:
 	; Shut down audio circuitry
-	ld a, 0
+	xor a,a ; Set register a to 0
 	ld [rNR52], a
 
-	; Initialise variables
-	;ld a, 0 ; a is still 0 here
-	ld [menu_selection], a
-	ld [menu_screen], a
-
 	; Enable VBlank and STAT interrupts
+	; STAT interrupt will not occur.
 	ld a, IEF_VBLANK | IEF_STAT
-	ld [rIE], a
-
-	; Enable interrupts
-	ei
+	ldh [rIE], a
 
 	; Wait for VBlank to occur
 	halt
 
-	; Turn the LCD off
-	ld a, LCDCF_OFF
-	ld [rLCDC], a
+	; Turn the LCD off and set parameters.
+	ld a, LCDCF_OFF | LCDCF_BGON | LCDCF_BG8000 | LCDCF_BG9800 | LCDCF_WINON | LCDCF_WIN9C00
+	ldh [rLCDC], a
+
+	; Clear OAM.
+	xor a,a
+	ld hl, _OAMRAM
+	ld b, (_IO - _OAMRAM)/8
+	call memset8
+
+	; Clear Screen 0. This removes the Nintendo logo.
+	; a is still 0 here
+	ld hl, _SCRN0
+	ld b, (_SCRN1 - _SCRN0)/8
+	call memset8
+
+	; Initialise variables
+	; a is still 0 here
+	ld [menu_selection], a
+	ld [menu_screen], a
 
 	; Copy the tile data
 	UNPACK1BPP_SECTION _VRAM, "Font data"
 
-FOR N,30
+FOR N,1,32
 	; Write hello world
 	BG_LOC_HL 1,N
 	ld de, text_hello
@@ -150,40 +162,52 @@ ENDR
 	rst $00
 
 	; Write text to Window
+	; Center align text
 	ld hl, _SCRN1 + ((SCRN_X_B - text_window_size) / 2)
 	ld de, text_window
 	ld b, text_window_size
 	rst $00
 
-	; Set Window location
+	; Set sprite one to cursor.
+	ld hl, _OAMRAM
+	ld a, 16	; Set sprite Y location to 0
+	ld [hli], a
+	ld a, 8		; Set sprite X location to 0
+	ld [hli], a
+	ld a, ">"	; Set tile index for sprite
+	ld [hli], a
+	ld a, %00000000	; Set sprite attributes
+	ld [hli], a
+
+	; Set Window location to top of the screen.
 	ld a, 0
-	ld [rWY], a
+	ldh [rWY], a
 	ld a, WX_OFS
-	ld [rWX], a
+	ldh [rWX], a
 	; Hide Window on line 8
 	ld a, 8
-	ld [rLYC], a
-	; Generate STAT interrupt when LYC=LY
+	ldh [rLYC], a
+	; Generate STAT interrupt when LYC=LY.
+	; The STAT interrupt handler hides the window.
 	ld a, STATF_LYC
-	ld [rSTAT], a
+	ldh [rSTAT], a
 
 	; Turn the LCD on
-	ld a, LCDCF_ON | LCDCF_BGON | LCDCF_BG8000 | LCDCF_BG9800 | LCDCF_WINON | LCDCF_WIN9C00
-	ld [rLCDC], a
+	ld hl, rLCDC
+	set 7, [hl]
 
 Main_Loop:
-	;call draw_menu
+	; Draws the menu on screen.
+	call draw_menu
 
 	; Wait for VBlank
 	halt
 
 	jr Main_Loop
 
+SECTION "Error Handler", ROM0
 ; Stop executing completely.
 End:
-	; Wait for VBlank
-	halt
-
 	; Disable IRQs
 	ld a, 0
 	ld [rIE], a
@@ -197,6 +221,7 @@ rst38:
 	DBGMSG "Fatal: RST38"
 	jp End
 
+SECTION "Main Loop", ROM0
 ; Draw current menu on screen.
 ; No parameters taken.
 draw_menu::
@@ -229,6 +254,7 @@ draw_menu::
 ;
 ;	ret
 
+SECTION "Memory Functions", ROM0
 ; Unpack 1bpp tiles to destination.
 ; hl = destination address.
 ; de = source address.
@@ -249,17 +275,16 @@ ENDR
 ; a  = value to set.
 ; hl = destination address.
 ; b  = qwords.
-;memset8::
-;.loop
-;REPT 8
-;	ld [hli], a
-;ENDR
-;	dec b
-;	jr nz, .loop
-;	ret
+memset8::
+.loop
+REPT 8
+	ld [hli], a
+ENDR
+	dec b
+	jr nz, .loop
+	ret
 
 SECTION "Text", ROM0
-SETCHARMAP custom_map
 	new_str "Hello World!", text_hello
 	new_str "Lorem Ipsum.", text_lorem
 	new_str "Window", text_window

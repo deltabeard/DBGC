@@ -2,3 +2,6 @@
 *.map
 *.sym
 *.o
+*.tilemap
+*.[12]bpp
+*.exe
