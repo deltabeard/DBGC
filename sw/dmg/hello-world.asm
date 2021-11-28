@@ -112,13 +112,6 @@ start:
 	xor a,a ; Set register a to 0
 	ld [rNR52], a
 
-	;; Copy functions to RAM
-	; Copy OAM DMA to HRAM
-	ld hl, oam_dma
-	ld de, oam_dma_code
-	ld b, SIZEOF("OAM DMA")
-	rst $00
-
 	; Enable VBlank and STAT interrupts
 	; STAT interrupt will not occur.
 	ld a, IEF_VBLANK | IEF_STAT
@@ -133,7 +126,7 @@ start:
 
 	; Clear OAM.
 	xor a,a
-	ld hl, oam_mirror
+	ld hl, _OAMRAM
 	ld b, (_IO - _OAMRAM)/8
 	call memset8
 
@@ -196,6 +189,12 @@ ENDR
 	ld a, STATF_LYC
 	ldh [rSTAT], a
 
+	; Set color palettes
+	ld a, %11100100
+	ld [rOBP0], a
+	ld [rOBP1], a
+	ld [rBGP], a
+
 	; Turn the LCD on
 	ld hl, rLCDC
 	set 7, [hl]
@@ -204,7 +203,6 @@ Main_Loop:
 	; Wait for VBlank
 	halt
 
-	call handle_input
 	call draw_menu
 
 	jr Main_Loop
@@ -233,18 +231,38 @@ handle_input::
 	ldh [rP1], a
 	; Read input to a.
 	ldh a, [rP1]
+	; a is overwritten later, so store input status to b.
+	ld b, a
 	
 	; Set hl to Y location
-	ld hl, oam_mirror
+	ld hl, _OAMRAM
 .check_down
-	bit 3, a
+	bit 3, b
 	jr nz, .check_up
-	inc [hl] ; Move sprite down by 1 pixel
+	; Move sprite down by 8 pixels
+	ld a, [hl]
+	add a, 8
+	ld [hl], a
 
 .check_up
-	bit 2, a
-	jr nz, .end
+	bit 2, b
+	jr nz, .check_left
+	; Move sprite up by 8 pixels
+	ld a, [hl]
+	sub a, 8
+	ld [hl], a
+
+.check_left
+	; Set hl to X location
+	inc hl
+	bit 1, b
+	jr nz, .check_right
 	dec [hl] ; Move sprite down by 1 pixel
+
+.check_right
+	bit 0, b
+	jr nz, .end
+	inc [hl] ; Move sprite down by 1 pixel
 
 .end
 	ret
@@ -283,11 +301,18 @@ draw_menu::
 
 SECTION "IRQ Routines", ROM0
 vblank_irq::
-	; Update OAM.
-	;call oam_dma
+	; ERRATA: DMG quick triggers VBlank IRQ on STAT IRQ enable.
+	; Check that we are in VBlank here.
+	ld a, [rSTAT]
+	bit 1, a ; %10 and %11 means we're not in HBlank or VBlank.
+	jr nz, .end
+
+	call handle_input
+
 	; Enable Window on new VBlank to draw menu name.
 	ld hl, rLCDC
 	set 5, [hl]
+.end
 	reti
 
 SECTION "Memory Functions", ROM0
@@ -320,19 +345,6 @@ ENDR
 	jr nz, .loop
 	ret
 
-oam_dma_code:
-LOAD "OAM DMA", HRAM
-oam_dma:
-	ld a, HIGH(STARTOF("WRAM OAM Mirror"))
-	ldh [$FF46], a  ; start DMA transfer (starts right after instruction)
-	ld a, 40        ; delay for a total of 4×40 = 160 cycles
-.wait
-	dec a           ; 1 cycle
-	jr nz, .wait    ; 3 cycles
-	ret
-.end
-ENDL
-
 SECTION "Text", ROM0
 	new_str "Hello World!", text_hello
 	new_str "Lorem Ipsum.", text_lorem
@@ -341,13 +353,9 @@ SECTION "Text", ROM0
 SECTION "Font data", ROM0
 INCBIN "F77SMC6_8x8_mini.1bpp"
 
-SECTION "WRAM OAM Mirror", WRAM0
-oam_mirror:: ds $FF
-
 SECTION "WRAM Variables", WRAM0[$c100]
 menu_selection:: db
 menu_screen:: db
-
 
 SECTION "HRAM", HRAM
 
