@@ -136,10 +136,17 @@ start:
 	ld b, (_SCRN1 - _SCRN0)/8
 	call memset8
 
-	; Initialise variables
-	; a is still 0 here
-	ld [menu_selection], a
-	ld [menu_screen], a
+	;; Initialise variables
+	; Read inputs for four frames before checking. This limits the speed at
+	; which the buttons trigger actions.
+	ld a, 4
+	ld [input_number], a
+	; Inputs are connected to pull-up resistors, so when the user presses
+	; a button, the read value is 0. Hence we initialise the current input
+	; to all 1s.
+	ld a, $0F
+	ld [input_current_dpad], a
+	ld [input_current_btns], a
 
 	; Copy the tile data
 	UNPACK1BPP_SECTION _VRAM, "Font data"
@@ -231,10 +238,36 @@ handle_input::
 	ldh [rP1], a
 	; Read input to a.
 	ldh a, [rP1]
+	; AND with previous value
+	ld hl, input_current_dpad
+	and a, [hl]
+	ld [hl], a
 	; a is overwritten later, so store input status to b.
 	ld b, a
-	
-	; Set hl to Y location
+
+	; Set input pins to directional pad.
+	ld a, P1F_GET_BTN
+	ldh [rP1], a
+	; Read input to a.
+	ldh a, [rP1]
+	; AND with previous value
+	ld hl, input_current_btns
+	and a, [hl]
+	ld [hl], a
+	; a is overwritten later, so store input status to c.
+	ld c, a
+
+	; Only continue if the input number is 0.
+	ld hl, input_number
+	dec [hl]
+	ret nz
+	ld [hl], 4
+	; Reset input memory
+	ld a, $0F
+	ld [hli], a ; hl = input_current_dpad
+	ld [hl],  a ; hl = input_current_btns
+
+	; Set hl to sprite Y location
 	ld hl, _OAMRAM
 .check_down
 	bit 3, b
@@ -300,6 +333,7 @@ draw_menu::
 ;	ret
 
 SECTION "IRQ Routines", ROM0
+; VBlank IRQ to be used for modifying VRAM and OAM.
 vblank_irq::
 	; ERRATA: DMG quick triggers VBlank IRQ on STAT IRQ enable.
 	; Check that we are in VBlank here.
@@ -348,14 +382,18 @@ ENDR
 SECTION "Text", ROM0
 	new_str "Hello World!", text_hello
 	new_str "Lorem Ipsum.", text_lorem
-	new_str "Window", text_window
+	new_str "Main Menu", text_window
 
 SECTION "Font data", ROM0
 INCBIN "F77SMC6_8x8_mini.1bpp"
 
 SECTION "WRAM Variables", WRAM0[$c100]
-menu_selection:: db
-menu_screen:: db
+; Number of input reads remaining before actioning user input.
+input_number:: db
+; Buttons currently held down. Use if input_number equals 0, otherwise AND with
+; the real values of the input.
+input_current_dpad:: db
+input_current_btns:: db
 
 SECTION "HRAM", HRAM
 
