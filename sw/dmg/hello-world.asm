@@ -137,16 +137,11 @@ start:
 	call memset8
 
 	;; Initialise variables
-	; Read inputs for four frames before checking. This limits the speed at
-	; which the buttons trigger actions.
-	ld a, 4
-	ld [input_number], a
 	; Inputs are connected to pull-up resistors, so when the user presses
 	; a button, the read value is 0. Hence we initialise the current input
 	; to all 1s.
-	ld a, $0F
-	ld [input_current_dpad], a
-	ld [input_current_btns], a
+	ld a, $FF
+	ld [input_current], a
 
 	; Copy the tile data
 	UNPACK1BPP_SECTION _VRAM, "Font data"
@@ -233,39 +228,35 @@ rst38:
 SECTION "Main Loop", ROM0
 ; Handle input.
 handle_input::
+	; Set input pins to buttons.
+	ld a, P1F_GET_BTN
+	ldh [rP1], a
+	; Read input to a.
+	ldh a, [rP1]
+	and a, $0F
+	; a is overwritten later, so store input status to b.
+	ld b, a
+	swap b
+
 	; Set input pins to directional pad.
 	ld a, P1F_GET_DPAD
 	ldh [rP1], a
 	; Read input to a.
 	ldh a, [rP1]
-	; AND with previous value
-	ld hl, input_current_dpad
-	and a, [hl]
-	ld [hl], a
-	; a is overwritten later, so store input status to b.
+	and a, $0F
+	; Place dpad bits in MSB of a.
+	xor a, b
+	; Store result in b.
 	ld b, a
 
-	; Set input pins to directional pad.
-	ld a, P1F_GET_BTN
-	ldh [rP1], a
-	; Read input to a.
-	ldh a, [rP1]
-	; AND with previous value
-	ld hl, input_current_btns
-	and a, [hl]
-	ld [hl], a
-	; a is overwritten later, so store input status to c.
-	ld c, a
+	; Find different between previous and current input state.
+	ldh a, [input_current]
+	xor b
+	and a, b
+	ld b, a
 
-	; Only continue if the input number is 0.
-	ld hl, input_number
-	dec [hl]
-	ret nz
-	ld [hl], 4
-	; Reset input memory
-	ld a, $0F
-	ld [hli], a ; hl = input_current_dpad
-	ld [hl],  a ; hl = input_current_btns
+	; Also store result in input_current for later.
+	ld [input_current], a
 
 	; Set hl to sprite Y location
 	ld hl, _OAMRAM
@@ -388,12 +379,9 @@ SECTION "Font data", ROM0
 INCBIN "F77SMC6_8x8_mini.1bpp"
 
 SECTION "WRAM Variables", WRAM0[$c100]
-; Number of input reads remaining before actioning user input.
-input_number:: db
-; Buttons currently held down. Use if input_number equals 0, otherwise AND with
-; the real values of the input.
-input_current_dpad:: db
-input_current_btns:: db
 
 SECTION "HRAM", HRAM
+; Buttons currently held down. Use if input_number equals 0, otherwise AND with
+; the real values of the input.
+input_current:: db
 
