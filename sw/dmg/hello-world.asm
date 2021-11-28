@@ -81,10 +81,7 @@ SECTION "RST38: Fatal Error", ROM0[$0038]
 	jp rst38
 
 SECTION "IRQ: VBlank", ROM0[$0040]
-	; Enable Window on new VBlank to draw menu name.
-	ld hl, rLCDC
-	set 5, [hl]
-	reti
+	jp vblank_irq
 
 SECTION "IRQ: LCD", ROM0[$0048]
 	; Disable Window when this interrupt is called.
@@ -115,6 +112,13 @@ start:
 	xor a,a ; Set register a to 0
 	ld [rNR52], a
 
+	;; Copy functions to RAM
+	; Copy OAM DMA to HRAM
+	ld hl, oam_dma
+	ld de, oam_dma_code
+	ld b, SIZEOF("OAM DMA")
+	rst $00
+
 	; Enable VBlank and STAT interrupts
 	; STAT interrupt will not occur.
 	ld a, IEF_VBLANK | IEF_STAT
@@ -124,12 +128,12 @@ start:
 	halt
 
 	; Turn the LCD off and set parameters.
-	ld a, LCDCF_OFF | LCDCF_BGON | LCDCF_BG8000 | LCDCF_BG9800 | LCDCF_WINON | LCDCF_WIN9C00
+	ld a, LCDCF_OFF | LCDCF_BGON | LCDCF_BG8000 | LCDCF_BG9800 | LCDCF_WINON | LCDCF_WIN9C00 | LCDCF_OBJ8 | LCDCF_OBJON
 	ldh [rLCDC], a
 
 	; Clear OAM.
 	xor a,a
-	ld hl, _OAMRAM
+	ld hl, oam_mirror
 	ld b, (_IO - _OAMRAM)/8
 	call memset8
 
@@ -197,11 +201,11 @@ ENDR
 	set 7, [hl]
 
 Main_Loop:
-	; Draws the menu on screen.
-	call draw_menu
-
 	; Wait for VBlank
 	halt
+
+	call handle_input
+	call draw_menu
 
 	jr Main_Loop
 
@@ -222,6 +226,29 @@ rst38:
 	jp End
 
 SECTION "Main Loop", ROM0
+; Handle input.
+handle_input::
+	; Set input pins to directional pad.
+	ld a, P1F_GET_DPAD
+	ldh [rP1], a
+	; Read input to a.
+	ldh a, [rP1]
+	
+	; Set hl to Y location
+	ld hl, oam_mirror
+.check_down
+	bit 3, a
+	jr nz, .check_up
+	inc [hl] ; Move sprite down by 1 pixel
+
+.check_up
+	bit 2, a
+	jr nz, .end
+	dec [hl] ; Move sprite down by 1 pixel
+
+.end
+	ret
+
 ; Draw current menu on screen.
 ; No parameters taken.
 draw_menu::
@@ -254,6 +281,15 @@ draw_menu::
 ;
 ;	ret
 
+SECTION "IRQ Routines", ROM0
+vblank_irq::
+	; Update OAM.
+	;call oam_dma
+	; Enable Window on new VBlank to draw menu name.
+	ld hl, rLCDC
+	set 5, [hl]
+	reti
+
 SECTION "Memory Functions", ROM0
 ; Unpack 1bpp tiles to destination.
 ; hl = destination address.
@@ -284,6 +320,19 @@ ENDR
 	jr nz, .loop
 	ret
 
+oam_dma_code:
+LOAD "OAM DMA", HRAM
+oam_dma:
+	ld a, HIGH(STARTOF("WRAM OAM Mirror"))
+	ldh [$FF46], a  ; start DMA transfer (starts right after instruction)
+	ld a, 40        ; delay for a total of 4×40 = 160 cycles
+.wait
+	dec a           ; 1 cycle
+	jr nz, .wait    ; 3 cycles
+	ret
+.end
+ENDL
+
 SECTION "Text", ROM0
 	new_str "Hello World!", text_hello
 	new_str "Lorem Ipsum.", text_lorem
@@ -292,8 +341,13 @@ SECTION "Text", ROM0
 SECTION "Font data", ROM0
 INCBIN "F77SMC6_8x8_mini.1bpp"
 
-SECTION "WRAM", WRAM0
+SECTION "WRAM OAM Mirror", WRAM0
+oam_mirror:: ds $FF
+
+SECTION "WRAM Variables", WRAM0[$c100]
 menu_selection:: db
 menu_screen:: db
 
+
 SECTION "HRAM", HRAM
+
