@@ -86,8 +86,8 @@ pico_generate_pio_header(manager
 target_link_libraries(manager
         pico_stdlib pico_bootrom pico_multicore
         pico_bootsel_via_double_reset
-        hardware_clocks hardware_pll hardware_vreg hardware_i2c hardware_pio
-        hardware_dma)
+        hardware_clocks hardware_pll hardware_vreg hardware_pio
+        hardware_dma hardware_spi)
 target_compile_definitions(manager PRIVATE
         PARAM_ASSERTIONS_DISABLE_ALL=1
         PICO_ENTER_USB_BOOT_ON_EXIT=1
@@ -103,16 +103,18 @@ pico_set_binary_type(manager copy_to_ram)
 add_executable(verify sw/gb_manager/src/verify.c)
 add_dependencies(verify gb_manager)
 target_include_directories(verify PRIVATE sw/gb_manager/inc)
-pico_generate_pio_header(verify
-        ${CMAKE_CURRENT_LIST_DIR}/sw/gb_manager/src/comms.pio)
+#pico_generate_pio_header(verify
+#        ${CMAKE_CURRENT_LIST_DIR}/sw/gb_manager/src/comms.pio)
+pico_generate_pio_header(manager
+        ${CMAKE_CURRENT_LIST_DIR}/sw/gb_manager/src/ds1302.pio)
 target_compile_definitions(verify PRIVATE
         PICO_STDIO_ENABLE_CRLF_SUPPORT=0
         PICO_STDIO_DEFAULT_CRLF=0
         PARAM_ASSERTIONS_DISABLE_ALL=1)
 target_link_libraries(verify
         pico_stdlib pico_stdio pico_bootrom pico_multicore
-        hardware_clocks hardware_i2c hardware_rtc hardware_pio hardware_vreg
-        hardware_sync hardware_pll hardware_dma
+        hardware_clocks hardware_pio hardware_vreg hardware_pio
+        hardware_sync hardware_pll hardware_spi
         pico_binary_info)
 pico_set_binary_type(verify no_flash)
 pico_enable_stdio_usb(verify 1)

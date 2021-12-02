@@ -10,30 +10,20 @@
  * THE USE OF THIS SOFTWARE.
  */
 
-#define _GNU_SOURCE
-
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <pico/stdlib.h>
 #include <pico/bootrom.h>
 #include <pico/binary_info.h>
-#include <hardware/i2c.h>
+#include <hardware/spi.h>
+#include <hardware/pio.h>
 #include <hardware/clocks.h>
-#include <hardware/rtc.h>
 #include <hardware/sync.h>
-#include <pico/util/datetime.h>
-#include <hardware/structs/xip_ctrl.h>
-#include <sys/cdefs.h>
 #include <hardware/vreg.h>
-#include <ctype.h>
 
-#define OPT_LIKELY(expr)	__builtin_expect(!!(expr), 1)
-#define OPT_UNLIKELY(expr)	__builtin_expect(!!(expr), 0)
-#define OPT_INLINE		inline
-#define OPT_FORCE_INLINE	__attribute__((__always_inline__)) OPT_INLINE
-
-#define ARRAYSIZE(array)	(sizeof(array)/sizeof(array[0]))
+#include <generic.h>
 
 #define CURRENT_MILLENNIUM	21
 #define RTC_YEARS_EPOCH		((CURRENT_MILLENNIUM - 1) * 100)
@@ -45,10 +35,6 @@ struct func_map {
 };
 
 void func_help(const char *cmd);
-void func_i2cscan(const char *cmd);
-void func_i2csend(const char *cmd);
-void func_i2crecv(const char *cmd);
-void func_rtctemp(const char *cmd);
 void func_rtcread(const char *cmd);
 void func_rtcwrite(const char *cmd);
 void func_gb(const char *cmd);
@@ -63,12 +49,6 @@ void func_reboot(const char *cmd);
 
 static const struct func_map map[] = {
 	{ "HELP",	"Print usage information",		func_help	},
-	{ "I2C SCAN",	"Perform I2C bus scan",			func_i2cscan	},
-	{ "I2C SEND",	"Send bytes 0xDD to address 0xAA on I2C bus\n"
-			     "\t'I2C SEND 0xAA 0xDD [0xDD ...]'", func_i2csend	},
-	{ "I2C RECV",	"Receive a byte from address 0xAA on I2C bus\n"
-			     "\t'I2C RECV 0xAA'",		func_i2crecv	},
-	{ "RTC TEMP",	"Read temperature from RTC",		func_rtctemp	},
 	{ "RTC READ",	"Read date and time from RTC and set internal RTC",
 								func_rtcread	},
 	{ "RTC WRITE",	"Set date and time to RTC \n"
@@ -76,7 +56,7 @@ static const struct func_map map[] = {
 			      					func_rtcwrite	},
 	{ "FRAM DUMP",	"Dump full contents of 32KiB FRAM",	func_framdump	},
 	{ "FRAM NUKE",	"Nuke the contents of 32KiB FRAM",	func_framnuke	},
-	{ "LED ON",	"Switches on LED",			func_led	},
+	{ "LED",	"Toggles LED",				func_led	},
 	{ "BTN",	"Get button status",			func_btn	},
 	{ "GB",		"Turn GB on (0) or off (1)\n"
 			       "\t'GB 1'",			func_gb		},
@@ -121,106 +101,29 @@ typedef enum {
 
 void func_framnuke(const char *cmd)
 {
-	uint8_t tx[34];
 	(void) cmd;
-
-	memset(tx, 0xAB, sizeof(tx));
-
-	/* Set initial write address to 0x0000. */
-	tx[0] = 0x00;
-	tx[1] = 0x00;
-
-	for(size_t i = 0; i < 32768; i += 32)
-	{
-		tx[0] = i >> 8;
-		tx[1] = i & 0xFF;
-		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, tx, sizeof(tx), false);
-		if(i % 1024 == 0)
-			putchar('.');
-	}
-
-	putchar('\n');
+	puts("Not implemented");
 }
 
 void func_framdump(const char *cmd)
 {
 	(void) cmd;
-	{
-		uint8_t tx[2];
-		/* Set read address to 0x0000. */
-		tx[0] = 0x00;
-		tx[1] = 0x00;
-		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR,
-			tx, sizeof(tx), true);
-	}
-
-	{
-		uint8_t rx[32];
-		size_t transferred = 0;
-
-		while(transferred < 32768)
-		{
-			i2c_read_blocking(i2c_default, I2C_MB85RC256V_ADDR, rx,
-				sizeof(rx), true);
-
-			/* To convert hex dump to original contents, use the
-			 * command `xxd -ps -r in.hex out.raw`. */
-			for(unsigned i = 0; i < sizeof(rx); i++)
-			{
-				printf("%02X", rx[i]);
-			}
-
-			printf("\n");
-			transferred += sizeof(rx);
-
-			if(transferred % 1024 == 0)
-			{
-				/* Required to stop corruption in Putty/KiTTY.*/
-				sleep_ms(1);
-			}
-		}
-	}
-
-	{
-		uint8_t unused;
-		i2c_read_blocking(i2c_default, I2C_MB85RC256V_ADDR, &unused, 1,
-			false);
-	}
+	puts("Not implemented");
 }
 
 void func_btn(const char *cmd)
 {
-	uint8_t conf = IO_EXP_INPUT_PORT;
-	uint8_t rx;
-
 	(void) cmd;
-
-	i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, &conf,
-		sizeof(conf), false);
-	i2c_read_blocking(i2c_default, I2C_PCA9536_ADDR, &rx, sizeof(rx),
-		false);
-
-	printf("Input: %02X\n", rx);
+	puts("Not implemented");
 }
 
 void func_led(const char *cmd)
 {
+	bool led_state;
 	(void) cmd;
 
-	uint8_t tx[2];
-	tx[0] = IO_EXP_OUTPUT_PORT;
-	tx[1] = 0b11111010;
-	i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
-		sizeof(tx), false);
-}
-
-void power_gb(bool turn_gb_on)
-{
-	uint8_t tx[2];
-	tx[0] = IO_EXP_OUTPUT_PORT;
-	tx[1] = 0b11111110 | !turn_gb_on;
-	i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
-			   sizeof(tx), false);
+	led_state = gpio_get(GPIO_LED_GREEN);
+	gpio_put(GPIO_LED_GREEN, !led_state);
 }
 
 void func_set_clock(const char *cmd)
@@ -260,6 +163,8 @@ void func_rtcwrite(const char *cmd)
 	int ret;
 	uint8_t tx[8];
 
+	return;
+
 	tx[0] = RTC_SEC;
 
 	//RTC WRITE <DOTW>:<DAY>/<MONTH>/<YEAR> <HOUR>:<MIN>:<SEC>
@@ -271,14 +176,6 @@ void func_rtcwrite(const char *cmd)
 	{
 		printf("sscanf acquired only %d items of %d from string "
 		       "'%s'\n", ret, 7, cmd);
-		return;
-	}
-
-	ret = i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR,
-		tx, sizeof(tx), false);
-	if(ret == PICO_ERROR_GENERIC)
-	{
-		printf("Error setting external RTC\n");
 		return;
 	}
 
@@ -295,22 +192,7 @@ void func_rtcread(const char *cmd)
 	int ret;
 
 	(void) cmd;
-
-	/* Select second register. */
-	ret = i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR, &tx, 1, false);
-	if(ret == PICO_ERROR_GENERIC)
-	{
-		printf("Error writing to RTC: %d\n", ret);
-		return;
-	}
-
-	/* Read time values. */
-	ret = i2c_read_blocking(i2c_default, I2C_DS3231M_ADDR, rx, sizeof(rx), false);
-	if(ret == PICO_ERROR_GENERIC)
-	{
-		printf("Error reading from RTC: %d\n", ret);
-		return;
-	}
+	return;
 
 	for(unsigned i = 0; i < sizeof(rx); i++)
 	{
@@ -318,173 +200,6 @@ void func_rtcread(const char *cmd)
 	}
 
 	return;
-}
-
-void func_rtctemp(const char *cmd)
-{
-	uint8_t tx = RTC_CONTROL_TEMP_MSB;
-	uint8_t rx[2];
-	const char *frac[4] = {
-		".00", ".25", ".50", ".75"
-	};
-	int ret;
-	int8_t t;
-
-	(void) cmd;
-
-	/* Select first temperature register. */
-	ret = i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR, &tx, 1, false);
-	if(ret == PICO_ERROR_GENERIC)
-	{
-		printf("Error writing to RTC: %d\n", ret);
-		return;
-	}
-
-	/* Read both temperature registers. */
-	ret = i2c_read_blocking(i2c_default, I2C_DS3231M_ADDR, rx, sizeof(rx), false);
-	if(ret == PICO_ERROR_GENERIC)
-	{
-		printf("Error reading from RTC: %d\n", ret);
-		return;
-	}
-
-	t = (int8_t)rx[0];
-
-	rx[1] >>= 6;
-	printf("Temperature: %d%s Celsius\n", t, frac[rx[1]]);
-
-	return;
-}
-
-// I2C reserves some addresses for special purposes. We exclude these from the scan.
-// These are any addresses of the form 000 0xxx or 111 1xxx
-bool reserved_addr(uint8_t addr)
-{
-	return (addr & 0x78) == 0 || (addr & 0x78) == 0x78;
-}
-
-void func_i2cscan(const char *cmd)
-{
-	(void) cmd;
-
-	printf("\nI2C Bus Scan\n");
-	printf("   0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F\n");
-
-	for (int addr = 0; addr < (1 << 7); ++addr)
-	{
-		int ret;
-		uint8_t rxdata;
-
-		if (addr % 16 == 0)
-		{
-			printf("%02x ", addr);
-		}
-
-		// Perform a 1-byte dummy read from the probe address. If a slave
-		// acknowledges this address, the function returns the number of bytes
-		// transferred. If the address byte is ignored, the function returns
-		// -1.
-
-		// Skip over any reserved addresses.
-		if (reserved_addr(addr))
-			ret = PICO_ERROR_GENERIC;
-		else
-			ret = i2c_read_blocking(i2c_default, addr, &rxdata, 1, false);
-
-		printf(ret < 0 ? "_" : "@");
-		printf(addr % 16 == 15 ? "\n" : "  ");
-	}
-}
-
-void func_i2csend(const char *cmd)
-{
-	int ret;
-	uint8_t addr;
-	uint8_t data[8];
-	unsigned len = 0;
-	char *endptr;
-
-	(void) cmd;
-
-	if(strlen(cmd) < strlen("I2C SEND 0x00 0x00"))
-	{
-		printf("Syntax error: string length incorrect\n");
-		return;
-	}
-
-	cmd += strlen("I2C SEND");
-	addr = (uint8_t)strtol(cmd, &endptr, 0);
-	if(endptr == cmd && addr == 0)
-	{
-		printf("Syntax error: failed to decode address\n");
-		return;
-	}
-
-	cmd = endptr;
-	data[len] = (uint8_t)strtol(cmd, &endptr, 0);
-	if(endptr == cmd && data[0] == 0)
-	{
-		printf("Syntax error: failed to decode data\n");
-		return;
-	}
-	len++;
-
-	while(len < sizeof(data))
-	{
-		cmd = endptr;
-		data[len] = (uint8_t)strtol(cmd, &endptr, 0);
-		if(endptr == cmd && data[len] == 0)
-			break;
-
-		len++;
-	}
-
-	printf("Sending command %#04x with %d bytes to %#04x\n", data[0], len,
-		addr);
-
-	ret = i2c_write_blocking(i2c_default, addr, data, len, false);
-	if(ret == PICO_ERROR_GENERIC)
-		printf("Error %d\n", ret);
-	else
-		printf("Sent %d byte(s)\n", ret);
-}
-
-void func_i2crecv(const char *cmd)
-{
-	int ret;
-	uint8_t addr;
-	char *endptr;
-	uint8_t dat[1];
-
-	(void) cmd;
-
-	if(strlen(cmd) != strlen("I2C RECV 0x00"))
-	{
-		printf("Syntax error: string length incorrect\n");
-		return;
-	}
-
-	cmd += strlen("I2C RECV");
-	addr = (uint8_t)strtol(cmd, &endptr, 0);
-	if(endptr == cmd && addr == 0)
-	{
-		printf("Syntax error: failed to decode address\n");
-		return;
-	}
-
-	printf("Receiving byte from %#04x\n", addr);
-
-	ret = i2c_read_blocking(i2c_default, addr, dat, sizeof(dat), false);
-	if(ret == PICO_ERROR_GENERIC)
-		printf("Error %d\n", ret);
-	else
-	{
-		printf("Received byte: %#04x, 0b", dat[0]);
-		for(int i = 7; i >= 0; i--)
-			printf("%d", (dat[0] >> i) & 1);
-
-		printf("\n");
-	}
 }
 
 void func_gb(const char *cmd)
@@ -502,7 +217,8 @@ void func_gb(const char *cmd)
 		return;
 	}
 
-	power_gb(turn_gb_on);
+	gpio_put(GPIO_GB_RESET, !turn_gb_on);
+
 	return;
 }
 
@@ -519,7 +235,7 @@ void func_help(const char *cmd)
 	puts("Usage:");
 	for(unsigned i = 0; i < ARRAYSIZE(map); i++)
 	{
-		printf("%s: %s\r", map[i].long_arg, map[i].help);
+		printf("%s: %s\n", map[i].long_arg, map[i].help);
 	}
 }
 
@@ -575,11 +291,70 @@ new_cmd:
 	goto new_cmd;
 }
 
+void init_peripherals(void)
+{
+	/** SIO **/
+	/* Initialise GPIO states. */
+	gpio_init_mask(1 << GPIO_LED_GREEN |
+			1 << GPIO_SWITCH | /* Not required for inputs. */
+			1 << GPIO_MOTOR |
+			1 << GPIO_GB_RESET |
+			1 << SPI_CSn);
+	/* Set GPIO pin directions. */
+	gpio_set_dir_out_masked(1 << GPIO_LED_GREEN |
+			1 << GPIO_MOTOR |
+			1 << GPIO_GB_RESET |
+			1 << SPI_CSn);
+	/* Set initial output state. */
+	gpio_set_mask(0 << GPIO_LED_GREEN |
+			0 << GPIO_MOTOR |
+			1 << GPIO_GB_RESET | /* Hold GB in reset. */
+			1 << SPI_CSn);
+
+	/* Set pulls. */
+	gpio_disable_pulls(GPIO_LED_GREEN);
+	gpio_pull_up(GPIO_SWITCH);
+	gpio_disable_pulls(SPI_CSn);
+	gpio_disable_pulls(GPIO_MOTOR);
+	gpio_disable_pulls(GPIO_GB_RESET);
+	/* External pull-ups are on the OE pins. */
+	gpio_disable_pulls(PIO_ADDR1_OE);
+	gpio_disable_pulls(PIO_ADDR2_OE);
+	gpio_disable_pulls(PIO_DATA_OE);
+	/* The TXU0104 has a weak pull-down. */
+	gpio_disable_pulls(PIO_PHI);
+	gpio_disable_pulls(PIO_NWR);
+	gpio_disable_pulls(PIO_NRD);
+	gpio_disable_pulls(PIO_NCS);
+
+	/** PIO **/
+	/* Initialise PIO0 (GB Bus) */
+	for(uint_fast8_t pin = PIO_PHI; pin <= PIO_M7; pin++)
+	{
+		/* Disable schmitt triggers on GB Bus. The bus transceivers
+		 * already have schmitt triggers. */
+		gpio_set_input_hysteresis_enabled(pin, false);
+		/* Use fast slew rate for GB Bus. */
+		gpio_set_slew_rate(pin, GPIO_SLEW_RATE_FAST);
+		/* Initialise PIO0 pins. */
+		pio_gpio_init(pio0, pin);
+	}
+
+	/* Initialise PIO1 (RTC) */
+	pio_gpio_init(pio1, PIO_RTC_SCLK);
+	pio_gpio_init(pio1, PIO_RTC_IO);
+	pio_gpio_init(pio1, PIO_RTC_CE);
+
+	/** SPI **/
+	/* Default settings of spi_init are correct for the MB85RS256B. */
+	spi_init(spi0, MB85RS256B_BAUDRATE);
+	gpio_set_function(SPI_MOSI, GPIO_FUNC_SPI);
+	gpio_set_function(SPI_MISO, GPIO_FUNC_SPI);
+	gpio_set_function(SPI_SCK, GPIO_FUNC_SPI);
+}
+
 int main(void)
 {
-	/* Reduce power consumption to stop IO Expander Power-On Reset Errata. */
-	sleep_ms(10);
-
 	{
 		/* The value for VCO set here is meant for least power
 		 * consumption. */
@@ -592,44 +367,7 @@ int main(void)
 		sleep_ms(4);
 	}
 
-	i2c_init(i2c_default, 400 * 1000);
-	gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
-	gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
-	gpio_disable_pulls(PICO_DEFAULT_I2C_SDA_PIN);
-	gpio_disable_pulls(PICO_DEFAULT_I2C_SCL_PIN);
-
-	// Make the I2C pins available to picotool
-	bi_decl_if_func_used(bi_2pins_with_func(PICO_DEFAULT_I2C_SDA_PIN,
-		PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C));
-
-	/* Set external RTC configuration. */
-	{
-		uint8_t tx[2];
-		tx[0] = RTC_CONTROL;
-		tx[1] = 0b00111100;
-		i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR, tx,
-			sizeof(tx), false);
-	}
-
-	/* Set external IO expander configuration. */
-	{
-		uint8_t tx[2];
-		tx[0] = IO_EXP_DIRECTION;
-		tx[1] = 0b11111010;
-		i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
-				   sizeof(tx), false);
-	}
-
-	/* Set initial address on FRAM. */
-	{
-		uint8_t tx[2];
-		tx[0] = 0x00;
-		tx[1] = 0x00;
-		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR,
-			tx, sizeof(tx), false);
-	}
-
-	power_gb(false);
+	init_peripherals();
 	bi_decl_if_func_used(bi_program_feature("PIO0 Game Boy Bus"));
 
 	/* If baudrate is set to PICO_STDIO_USB_RESET_MAGIC_BAUD_RATE, then the

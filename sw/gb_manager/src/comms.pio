@@ -9,22 +9,35 @@
 ; THE USE OF THIS SOFTWARE.
 ;
 
-.define PHI		2
-.define NRD		3
-.define NCS		4
-.define A15		20
+.define PHI		13
+.define NWR		14
+.define NRD		15
+.define NCS		16
+.define ADDR1_OE	17
+.define ADDR2_OE	18
+.define DATA_OE		19
+.define DATA_DIR	20
+.define M0		21
+.define M7		28
 
 ;; Read address from GB bus for ROM reads and writes
 .program gb_bus_get_address
+
+; Side-set pins are PIO_ADDR1_OE, PIO_ADDR2_OE, PIO_DATA_OE, and PIO_DATA_DIR.
+.side_set 4 opt
+
 gb_bus_get_address_start:
 ;	Wait for a ROM read/write instruction.
-	wait 0 GPIO A15
+	wait 0 GPIO M7 side 0b1010 ; Side: Set multiplexor to HIGH Address byte
+
+;	Read LOW byte of address into ISR.
+	in PINS, 8 side 0b0110
+;	Read HIGH byte of address into ISR.
+	in PINS, 8 side 0b1010
 
 ;	Jump if a data read is requested.
-	jmp PIN gb_bus_write_data
-
-;	Read address into ISR.
-	in PINS, 16
+	jmp PIN gb_bus_write_data side 0b1100; Side: Set multiplexor to Data
+					; byte
 
 ;	No data is to be read, so push address to LSB and zero data byte.
 	in NULL, 16
@@ -44,11 +57,11 @@ gb_bus_write_data:
 ;	Fill the X register with ones.
 	mov X, ~null
 
-;	Wait for data to become ready. Delay 1 cycle for data bus to change. */
-	wait 0 GPIO PHI [1]
+;	Wait for data to become ready. */
+	wait 0 GPIO NWR
 
-;	Read address and data into ISR.
-	in PINS, 24
+;	Read Data byte.
+	in PINS, 8 side 0b1100 ; Data
 
 ;	Shift the address and data to LSB, and fill the MSB byte with ones.
 	in X, 8
@@ -62,15 +75,22 @@ gb_bus_write_data:
 ;; Read address from GB bus for RAM reads and writes
 ;; Only addresses between A000 and BFFF inclusive must be handled by the CPU.
 .program gb_bus_get_cs
+
+; Side-set pins are PIO_ADDR1_OE, PIO_ADDR2_OE, PIO_DATA_OE, and PIO_DATA_DIR.
+.side_set 4 opt
+
 gb_bus_get_cs_start:
 ;	Wait for a RAM read/write instruction.
 	wait 0 GPIO NCS
 
-;	Jump if a data write is requested.
-	jmp PIN gb_bus_write_data
+;	Read LOW byte of address into ISR.
+	in PINS, 8 side 0b0110
+;	Read HIGH byte of address into ISR.
+	in PINS, 8 side 0b1010
 
-;	Read address into ISR.
-	in PINS, 16
+;	Jump if a data read is requested.
+	jmp PIN gb_bus_write_data side 0b1100; Side: Set multiplexor to Data
+					; byte
 
 ;	No data is to be read, so push address to LSB and zero data byte.
 	in NULL, 16
@@ -90,11 +110,11 @@ gb_bus_write_data:
 ;	Fill the X register with ones.
 	mov X, ~null
 
-;	Wait for data to become ready. Delay 1 cycle for data bus to change.
-	wait 0 GPIO PHI [1]
+;	Wait for data to become ready.
+	wait 0 GPIO NWR
 
-;	Read address and data into ISR.
-	in PINS, 24
+;	Read Data byte.
+	in PINS, 8 side 0b1100 ; Data
 
 ;	Shift the address and data to LSB, and fill the MSB byte with ones.
 	in X, 8
@@ -109,34 +129,37 @@ gb_bus_write_data:
 ;; read operation of an address.
 .program gb_bus_write_data
 
-; Side-set pin is DATA_DIR
-.side_set 1
+; Side-set pins are PIO_ADDR1_OE, PIO_ADDR2_OE, PIO_DATA_OE, and PIO_DATA_DIR.
+.side_set 4 opt
 
 public gb_bus_write_data:
 ;	Pull data from TX FIFO to OSR
 ;	This is not required if autopull is enabled
 ;	Side: Return control of the data bus to the Game Boy.
-	pull ifempty block side 0
+	pull ifempty block
 
 ;	Output data from OSR to data pins
-	out PINS, 8	side 0
+	out PINS, 8
 
 ;	Set Data pins to OUTPUT.
 ;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
-	mov osr, ~null	side 0  ; Set OSR to all ones
-	out pindirs, 8	side 1  ; Output ones to data pindirs
-				; Side: set DATA_DIR to RP2040 -> GB (B -> A)
+	mov osr, ~null side 0b1100 ; Set OSR to all ones
+				; Side: set multiplexor to Data byte.
+	out pindirs, 8 side 0b1101 ; Output ones to data pindirs
+				; Side: change data direction to RP2040 -> GB.
 
 ;	Keep data output active until new clock cycle.
 ;	Side: Stay in control of the data bus.
-	wait 0 GPIO PHI	 side 1
-	wait 1 GPIO PHI	 side 1
+	wait 0 GPIO PHI
+	wait 1 GPIO PHI
 
 ;	Set Data pins to INPUT.
 ;	See: https://www.raspberrypi.org/forums/viewtopic.php?t=303335
-	mov osr, null	side 0  ; Set OSR to all zeros
-	out pindirs, 8	side 0  ; Output ones to data pindirs
+	mov osr, null side 0b1010  ; Set OSR to all zeros
+				; Side: set multiplexor to HIGH Address byte.
 				; Side: set DATA_DIR to GB -> RP2040 (A -> B)
+	out pindirs, 8		; Output ones to data pindirs
+
 
 ;	Wait for next data output
 .wrap
@@ -159,10 +182,10 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_ncs,
 	/* Configure SM_A15, and SM_CS. */
 	/* Setting the "IN" pins on "gb_bus_get_address" state machines. */
 	/* Set the first "IN" pin on the state machines to the first address pin. */
-	sm_config_set_in_pins(&sm_config_a15, PIO_A0);
-	sm_config_set_in_pins(&sm_config_ncs, PIO_A0);
+	sm_config_set_in_pins(&sm_config_a15, PIO_M0);
+	sm_config_set_in_pins(&sm_config_ncs, PIO_M0);
 	/* Configure "OUT" pins to the data bus. */
-	sm_config_set_out_pins(&sm_config_do, PIO_D0, NUM_DATA_PINS);
+	sm_config_set_out_pins(&sm_config_do, PIO_M0, NUM_MULTIPLEX_PINS);
 
 	/* Configure "JMP" pins. */
 	/* If RD is HIGH, then this JMP instruction will allow the state machine to
@@ -175,37 +198,30 @@ void gb_bus_program_init(PIO pio, unsigned sm_a15, unsigned sm_ncs,
 	sm_config_set_in_shift(&sm_config_a15, true, true, 32);
 	sm_config_set_in_shift(&sm_config_ncs, true, true, 32);
 	/* Set number of bits in TX FIFO. */
-	sm_config_set_out_shift(&sm_config_do, true, false, NUM_DATA_PINS);
+	sm_config_set_out_shift(&sm_config_do, true, false, NUM_MULTIPLEX_PINS);
 
 	/* Set clock speed of PIO state machines. */
 	sm_config_set_clkdiv_int_frac(&sm_config_a15, 1, 0);
 	sm_config_set_clkdiv_int_frac(&sm_config_ncs, 1, 0);
 	sm_config_set_clkdiv_int_frac(&sm_config_do,  1, 0);
 
-	/* Set address bus pins as inputs. */
-	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_PHI, 1, false);
-	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_NRD, 1, false);
-	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_NCS, 1, false);
-	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_A0, NUM_ADDRESS_PINS, false);
-	pio_sm_set_consecutive_pindirs(pio, sm_ncs, PIO_PHI, 1, false);
-	pio_sm_set_consecutive_pindirs(pio, sm_ncs, PIO_NRD, 1, false);
-	pio_sm_set_consecutive_pindirs(pio, sm_ncs, PIO_NCS, 1, false);
-	pio_sm_set_consecutive_pindirs(pio, sm_ncs, PIO_A0, NUM_ADDRESS_PINS, false);
-	/* Set data bus pins as inputs initialy. The sm_do state machine will change
-	 * the pin directions automatically. */
-	pio_sm_set_consecutive_pindirs(pio, sm_do,  PIO_D0, NUM_DATA_PINS, false);
-	pio_sm_set_consecutive_pindirs(pio, sm_do, PIO_DIR, 1, true);
+	/* Set initial pin directions. */
+	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_PHI, 4, false);
+	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_ADDR1_OE, 4, true);
+	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_M0, 8, false);
 
-	/* Allow PIO to set D[0-7] GPIO pins output. */
-	for(unsigned pin = PIO_D0; pin <= PIO_D7; pin++)
+	/* Allow PIO to set OE and MX GPIO pins as output. */
+	for(unsigned pin = PIO_ADDR1_OE; pin <= PIO_M7; pin++)
 		pio_gpio_init(pio, pin);
 
-	pio_gpio_init(pio, PIO_DIR);
-
-	/* Set "sideset" configuration to allow DATA_DIR to be changed on each
-	 * instruction for the sm_do state machine. */
-	sm_config_set_sideset(&sm_config_do, 1, false, false);
-	sm_config_set_sideset_pins(&sm_config_do, PIO_DIR);
+	/* Set "sideset" configuration to allow OE and DATA_DIR to be changed
+	 on each instruction for the state machines. */
+        sm_config_set_sideset(&sm_config_a15, 4, true, false);
+        sm_config_set_sideset(&sm_config_ncs, 4, false, false);
+	sm_config_set_sideset(&sm_config_do, 4, true, false);
+	sm_config_set_sideset_pins(&sm_config_a15, PIO_ADDR1_OE);
+	sm_config_set_sideset_pins(&sm_config_ncs, PIO_ADDR1_OE);
+	sm_config_set_sideset_pins(&sm_config_do, PIO_ADDR1_OE);
 
 	/* Initialise all state machines. */
 	pio_sm_init(pio, sm_a15, gb_bus_get_address_off,  &sm_config_a15);

@@ -18,7 +18,7 @@
 #include <sys/cdefs.h>
 #include <stdlib.h>
 #include <string.h>
-#include <hardware/i2c.h>
+#include <hardware/spi.h>
 #include <hardware/pio.h>
 #include <hardware/vreg.h>
 #include <hardware/pll.h>
@@ -34,9 +34,9 @@
 #include <generic.h>
 
 /* ROMs */
-#include <gb_manager.gb.h>
+//#include <gb_manager.gb.h>
 #include <libbet.gb.h>
-#include <pcss.gbc.h>
+//#include <pcss.gbc.h>
 
 typedef enum {
 	IO_EXP_INPUT_PORT = 0,
@@ -133,8 +133,8 @@ void gb_power(gb_pwr_e pwr)
 	uint8_t tx[2];
 	tx[0] = IO_EXP_OUTPUT_PORT;
 	tx[1] = 0b11111110 | pwr;
-	i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
-			   sizeof(tx), false);
+	//i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
+	//		   sizeof(tx), false);
 
 	return;
 }
@@ -144,27 +144,67 @@ void gb_power(gb_pwr_e pwr)
  */
 void init_gpio_pins(void)
 {
-	/* I2C0 */
-	gpio_set_function(PICO_DEFAULT_I2C_SDA_PIN, GPIO_FUNC_I2C);
-	gpio_set_function(PICO_DEFAULT_I2C_SCL_PIN, GPIO_FUNC_I2C);
-	/* I2C pins have an external pull-up resistor connected. */
-	gpio_disable_pulls(PICO_DEFAULT_I2C_SDA_PIN);
-	gpio_disable_pulls(PICO_DEFAULT_I2C_SCL_PIN);
+	/** SIO **/
+	/* Initialise GPIO states. */
+	gpio_init_mask(
+		1 << GPIO_LED_GREEN |
+		1 << GPIO_SWITCH | /* Not required for inputs. */
+		1 << GPIO_MOTOR |
+		1 << GPIO_GB_RESET |
+		1 << SPI_CSn);
+	/* Set GPIO pin directions. */
+	gpio_set_dir_out_masked(
+		1 << GPIO_LED_GREEN |
+		1 << GPIO_MOTOR |
+		1 << GPIO_GB_RESET |
+		1 << SPI_CSn);
+	/* Set initial output state. */
+	gpio_set_mask(
+		0 << GPIO_LED_GREEN |
+		0 << GPIO_MOTOR |
+		1 << GPIO_GB_RESET | /* Hold GB in reset. */
+		1 << SPI_CSn);
 
-	/* PIO0 */
-	for(uint_fast8_t i = PIO_PHI; i <= PIO_A15; i++)
+	/* Set pulls. */
+	gpio_disable_pulls(GPIO_LED_GREEN);
+	gpio_pull_up(GPIO_SWITCH);
+	gpio_disable_pulls(SPI_CSn);
+	gpio_disable_pulls(GPIO_MOTOR);
+	gpio_disable_pulls(GPIO_GB_RESET);
+	/* External pull-ups are on the OE pins. */
+	gpio_disable_pulls(PIO_ADDR1_OE);
+	gpio_disable_pulls(PIO_ADDR2_OE);
+	gpio_disable_pulls(PIO_DATA_OE);
+	/* The TXU0104 has a weak pull-down. */
+	gpio_disable_pulls(PIO_PHI);
+	gpio_disable_pulls(PIO_NWR);
+	gpio_disable_pulls(PIO_NRD);
+	gpio_disable_pulls(PIO_NCS);
+
+	/** PIO **/
+	/* Initialise PIO0 (GB Bus) */
+	for(uint_fast8_t pin = PIO_PHI; pin <= PIO_M7; pin++)
 	{
-		gpio_set_input_enabled(i, true);
 		/* Disable schmitt triggers on GB Bus. The bus transceivers
 		 * already have schmitt triggers. */
-		gpio_set_input_hysteresis_enabled(i, false);
+		gpio_set_input_hysteresis_enabled(pin, false);
+		/* Use fast slew rate for GB Bus. */
+		gpio_set_slew_rate(pin, GPIO_SLEW_RATE_FAST);
+		/* Initialise PIO0 pins. */
+		pio_gpio_init(pio0, pin);
 	}
 
-	for(uint_fast8_t i = PIO_PHI; i <= PIO_DIR; i++)
-	{
-		/* Use fast slew rate for GB Bus. */
-		gpio_set_slew_rate(i, GPIO_SLEW_RATE_FAST);
-	}
+	/* Initialise PIO1 (RTC) */
+	pio_gpio_init(pio1, PIO_RTC_SCLK);
+	pio_gpio_init(pio1, PIO_RTC_IO);
+	pio_gpio_init(pio1, PIO_RTC_CE);
+
+	/** SPI **/
+	/* Default settings of spi_init are correct for the MB85RS256B. */
+	spi_init(spi0, MB85RS256B_BAUDRATE);
+	gpio_set_function(SPI_MOSI, GPIO_FUNC_SPI);
+	gpio_set_function(SPI_MISO, GPIO_FUNC_SPI);
+	gpio_set_function(SPI_SCK, GPIO_FUNC_SPI);
 }
 
 uint8_t bcd_to_int(uint8_t x)
@@ -194,6 +234,7 @@ uint_fast16_t get_day_num(uint8_t year, uint8_t month, uint8_t day)
 	return days;
 }
 
+#if 0
 /**
  * Initialise the I2C peripherals. This also reads save data from the FRAM.
  * \return	PICO_ERROR_GENERIC on error or bytes written.
@@ -271,6 +312,24 @@ int init_i2c_peripherals(void)
 
 out:
 	return ret;
+}
+#endif
+
+int init_peripherals(void)
+{
+	/* Initialise RTC. */
+
+	/* Initialise FRAM and obtain previous save data. */
+
+	/* Initialise GB Bus PIO state machines. */
+	gb_bus_program_init(pio0, PIO_SM_A15, PIO_SM_NCS, PIO_SM_DO);
+	/* Enable state machines. */
+	pio_sm_set_enabled(pio0, PIO_SM_A15, true);
+	/* PIO_SM_NCS should be enabled when cart RAM access is expected. */
+	pio_sm_set_enabled(pio0, PIO_SM_NCS, false);
+	pio_sm_set_enabled(pio0, PIO_SM_DO,  true);
+
+	return 0;
 }
 
 _Noreturn void __not_in_flash_func(play_rom_only)(const uint8_t *rom)
@@ -814,22 +873,9 @@ void core1_main(void)
 	play_mgmt_rom();
 #else
 	/* Set the ROM you want to play here. */
-	check_and_play_rom(pcss_gbc);
+	check_and_play_rom(libbet_gb);
 	//check_and_play_rom(gb_manager_gb);
 #endif
-}
-
-void init_pio(void)
-{
-	/* Initilise PIO program. */
-	gb_bus_program_init(pio0, PIO_SM_A15, PIO_SM_NCS, PIO_SM_DO);
-	/* Enable state machines. */
-	pio_sm_set_enabled(pio0, PIO_SM_A15, true);
-	/* PIO_SM_NCS should be enabled when cart RAM access is expected. */
-	pio_sm_set_enabled(pio0, PIO_SM_NCS, false);
-	pio_sm_set_enabled(pio0, PIO_SM_DO,  true);
-
-	return;
 }
 
 #if 0
@@ -919,8 +965,8 @@ _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 			continue;
 
 		__atomic_store_n(&ram_write, 0, __ATOMIC_SEQ_CST);
-		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
-			ram_sz + 2, false);
+		//i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
+		//	ram_sz + 2, false);
 #endif
 	}
 }
@@ -987,9 +1033,6 @@ out:
 
 int main(void)
 {
-	/* Reduce power consumption to stop IO Expander Power-On Reset Errata. */
-	sleep_ms(10);
-
 	/* Previously used 572000000 VCO, which sets system clock to 286MHz and
 	 * flash to 143MHz.
 	 * A VCO of at least 480000000 is required for single speed games to
@@ -1007,17 +1050,13 @@ int main(void)
 	}
 
 	init_gpio_pins();
-
-	/* The IO expander is required for the cart to work, as it must be
-	 * use to pull the Game Boy out of reset. */
-	if(init_i2c_peripherals() < 0)
-		reset_usb_boot(0, 0);
+	init_peripherals();
 
 	/* After initialising the IO expander, ensure that the Game Boy is held
 	 * in reset. */
 	gb_power(GB_POWER_OFF);
 
-#if 1
+#if 0
 	{
 		uint8_t conf = IO_EXP_INPUT_PORT;
 		uint8_t rx;
@@ -1033,7 +1072,6 @@ int main(void)
 	}
 #endif
 
-	init_pio();
 	begin_playing();
 
 	{
