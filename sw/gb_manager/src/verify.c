@@ -42,6 +42,7 @@ void func_gb(const char *cmd);
 void func_framdump(const char *cmd);
 void func_framnuke(const char *cmd);
 void func_led(const char *cmd);
+void func_info(const char *cmd);
 void func_btn(const char *cmd);
 void func_reboot(const char *cmd);
 
@@ -55,6 +56,7 @@ static const struct func_map map[] = {
 	{ "FRAM DUMP",	"Dump full contents of 32KiB FRAM",	func_framdump	},
 	{ "FRAM NUKE",	"Nuke the contents of 32KiB FRAM",	func_framnuke	},
 	{ "LED",	"Toggles LED",				func_led	},
+	{ "INFO",	"Print information",			func_info	},
 	{ "BTN",	"Get button status",			func_btn	},
 	{ "GB",		"Turn GB on (0) or off (1)\n"
 			       "\t'GB 1'",			func_gb		},
@@ -215,6 +217,39 @@ void func_gb(const char *cmd)
 	gpio_put(GPIO_GB_RESET, !turn_gb_on);
 
 	return;
+}
+
+void func_info(const char *cmd)
+{
+	(void) cmd;
+
+	/* Get RP2040 version information. */
+	{
+		const uint8_t chip = rp2040_chip_version();
+		const uint8_t rom = rp2040_rom_version();
+
+		printf("RP2040:\n"
+			"  Chip: %d\n"
+			"  ROM: %d\n",
+			chip, rom);
+	}
+
+	/* Get information on connected FRAM. */
+	{
+		const uint8_t src[1] = { 0b10011111 };
+		uint8_t dst[4];
+
+		gpio_put(SPI_CSn, 0);
+		spi_write_blocking(spi0, src, sizeof(src));
+		spi_read_blocking(spi0, 0x00, dst, sizeof(dst));
+		gpio_put(SPI_CSn, 1);
+
+		printf("FRAM:\n"
+			"  Manufacturer: %02X\n"
+			"  Continuation Code: %02X\n"
+			"  Product ID: %02X %02X\n",
+			dst[0], dst[1], dst[2], dst[3]);
+	}
 }
 
 void func_reboot(const char *cmd)
