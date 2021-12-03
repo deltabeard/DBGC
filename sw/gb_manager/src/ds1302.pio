@@ -31,13 +31,19 @@ ds1302_write_start:
 ;	Pull data from TX FIFO to OSR
 ;	This is not required if autopull is enabled
 	pull ifempty block	side 0
+
+	wait 0 irq 0
+        irq set 0
+
 	set PINDIRS, 1		; Set IO to output
 
 cmd_loop:
 ;	Output bit.
 	out PINS, 1		side 0
 ;	DS1302 reads on high edge of SCLK
-	jmp !OSR cmd_loop	side 1 [1]
+	jmp !OSRE cmd_loop	side 1 [1]
+
+	irq clear 0
 .wrap
 
 ;; Read byte from DS1302
@@ -56,30 +62,36 @@ ds1302_read_start:
 ;	Pull number of bytes to read to OSR.
 	pull ifempty block	side 0
 
+	wait 0 irq 0
+	irq set 0
+
 ;	Set byte counter
-	move Y, OSR
+	;mov Y, OSR
+	out NULL, 8
 ;	Set bit counter
 	set X, 7
 
-read_byte:
+;read_byte:
 read_bit:
 	in PINS, 1		side 0
 	jmp X-- read_bit	side 1 [1]
 
-	set X, 7 ; Reset bit counter
-	jmp Y-- read_byte
+	;set X, 7 ; Reset bit counter
+	;jmp Y-- read_byte
+
+	irq clear 0
 .wrap
 
 
 % c-sdk {
 #include <hardware/clocks.h>
 
-void gb_bus_program_init(PIO pio, unsigned sm_wr, unsigned sm_rd)
+void ds1302_program_init(PIO pio, unsigned sm_wr, unsigned sm_rd)
 {
 	pio_sm_config sm_config_rd, sm_config_wr;
 	uint ds1302_write_off, ds1302_read_off;
 	const uint32_t target_sclk_hz = 512 * 1024;
-	uint16_t clkdiv = (uint16_t)(clock_get_hz(clk_sys)/target_sclk_hz);
+	uint16_t clkdiv = 255;(uint16_t)(clock_get_hz(clk_sys)/target_sclk_hz);
 
 	ds1302_write_off = pio_add_program(pio, &ds1302_write_program);
 	ds1302_read_off = pio_add_program(pio, &ds1302_read_program);
@@ -115,8 +127,8 @@ void gb_bus_program_init(PIO pio, unsigned sm_wr, unsigned sm_rd)
 	pio_gpio_init(pio, PIO_RTC_IO);
 	pio_gpio_init(pio, PIO_RTC_CE);
 
-        sm_config_set_sideset(&sm_config_wr, 1, false, false);
-        sm_config_set_sideset(&sm_config_rd, 1, false, false);
+        sm_config_set_sideset(&sm_config_wr, 1, true, false);
+        sm_config_set_sideset(&sm_config_rd, 1, true, false);
 	sm_config_set_sideset_pins(&sm_config_wr, PIO_RTC_SCLK);
 	sm_config_set_sideset_pins(&sm_config_rd, PIO_RTC_SCLK);
 

@@ -23,6 +23,7 @@
 #include <hardware/sync.h>
 #include <hardware/vreg.h>
 
+#include <ds1302.pio.h>
 #include <generic.h>
 
 #define CURRENT_MILLENNIUM	21
@@ -61,39 +62,24 @@ static const struct func_map map[] = {
 };
 
 typedef enum {
-	RTC_SEC = 0,
-	RTC_MIN,
-	RTC_HOUR,
-	RTC_DAY,
-	RTC_DATE,
-	RTC_MONTH,
-	RTC_YEAR,
-	RTC_ALARM1_SEC,
-	RTC_ALARM1_MIN,
-	RTC_ALARM1_HOUR,
-	RTC_ALARM1_DAY,
-	RTC_ALARM1_DATE,
-	RTC_ALARM2_MIN,
-	RTC_ALARM2_HOUR,
-	RTC_ALARM2_DAY,
-	RTC_ALARM2_DATE,
-	RTC_CONTROL,
-	RTC_CONTROL_STATUS,
-	RTC_CONTROL_AGING,
-	RTC_CONTROL_TEMP_MSB = 0x11,
-	RTC_CONTROL_TEMP_LSB = 0x12
-} rtc_reg;
+	RTC_SEC = 0x80,
+	RTC_MIN = 0x82,
+	RTC_HOUR = 0x84,
+	RTC_DATE = 0x86,
+	RTC_MONTH = 0x88,
+	RTC_DAY = 0x8A,
+	RTC_YEAR = 0x8C,
+	RTC_WRITE_PROTECT = 0x8E,
+	RTC_TRICKLE_CHARGER = 0x90,
 
-typedef enum {
-	IO_EXP_INPUT_PORT = 0,
-	IO_EXP_OUTPUT_PORT,
-	IO_EXP_INVERSION,
-	IO_EXP_DIRECTION
-} io_exp_reg;
+	RTC_CLOCK_BURST = 0xBE,
 
-#define ROM_BANK_SIZE   0x4000
-#define CRAM_BANK_SIZE  0x2000
-#define CART_RAM_ADDR   0xA000
+	RTC_RAM_0 = 0xC0,
+	RTC_RAM_31 = 0xFC,
+
+	RTC_RAM_BURST = 0xFE
+} rtc_reg_wr;
+#define RTC_RED_RD_BIT		0x1
 
 void func_framnuke(const char *cmd)
 {
@@ -158,19 +144,54 @@ void func_rtcwrite(const char *cmd)
 
 void func_rtcread(const char *cmd)
 {
-	uint8_t tx = RTC_SEC;
-	uint8_t rx[RTC_YEAR + 1];
-	const char *rx_label[] = {
-		"SEC", "MIN", "HOUR", "DAY", "DATE", "MONTH", "YEAR"
-	};
-	int ret;
+	io_ro_32 *rdrx = (io_ro_32 *) &pio1->rxf[PIO1_SM_RTC_RD];
+	io_wo_32 *rdtx = (io_wo_32 *) &pio1->txf[PIO1_SM_RTC_RD];
+	io_wo_32 *wrtx = (io_wo_32 *) &pio1->txf[PIO1_SM_RTC_WR];
 
 	(void) cmd;
-	return;
 
-	for(unsigned i = 0; i < sizeof(rx); i++)
+	gpio_put(PIO_RTC_CE, 1);
+	*wrtx = RTC_WRITE_PROTECT;
+	*wrtx = 0x00;
+	gpio_put(PIO_RTC_CE, 0);
+	sleep_ms(1);
+
+	gpio_put(PIO_RTC_CE, 1);
+	*wrtx = RTC_RAM_0;
+	*wrtx = 0x69;
+	gpio_put(PIO_RTC_CE, 0);
+	sleep_ms(1);
+
+	for(uint8_t reg_rd = RTC_SEC + RTC_RED_RD_BIT;
+		reg_rd <= (RTC_TRICKLE_CHARGER + RTC_RED_RD_BIT);
+		reg_rd += 2)
 	{
-		printf("%s: %02X\n", rx_label[i], rx[i]);
+		printf("%02X: ", reg_rd);
+
+		gpio_put(PIO_RTC_CE, 1);
+		*wrtx = reg_rd;
+		*rdtx = 1;
+		while(pio_sm_is_rx_fifo_empty(pio1, PIO1_SM_RTC_RD) == true);
+		gpio_put(PIO_RTC_CE, 0);
+
+		printf("%02X\n", *rdrx);
+		sleep_ms(1);
+	}
+
+	for(uint8_t reg_rd = RTC_RAM_0 + RTC_RED_RD_BIT;
+		reg_rd <= (RTC_RAM_31 + RTC_RED_RD_BIT);
+		reg_rd += 2)
+	{
+		printf("%02X: ", reg_rd);
+
+		gpio_put(PIO_RTC_CE, 1);
+		*wrtx = reg_rd;
+		*rdtx = 1;
+		while(pio_sm_is_rx_fifo_empty(pio1, PIO1_SM_RTC_RD) == true);
+		gpio_put(PIO_RTC_CE, 0);
+
+		printf("%02X\n", *rdrx);
+		sleep_ms(1);
 	}
 
 	return;
@@ -322,6 +343,11 @@ void init_peripherals(void)
 	pio_gpio_init(pio1, PIO_RTC_SCLK);
 	pio_gpio_init(pio1, PIO_RTC_IO);
 	pio_gpio_init(pio1, PIO_RTC_CE);
+	ds1302_program_init(pio1, PIO1_SM_RTC_WR, PIO1_SM_RTC_RD);
+	/* Enable state machines. */
+	pio_sm_set_enabled(pio1, PIO1_SM_RTC_WR, true);
+	/* PIO_SM_NCS should be enabled when cart RAM access is expected. */
+	pio_sm_set_enabled(pio1, PIO1_SM_RTC_RD, true);
 
 	/** SPI **/
 	/* Default settings of spi_init are correct for the MB85RS256B. */

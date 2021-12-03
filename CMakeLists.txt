@@ -105,7 +105,7 @@ add_dependencies(verify gb_manager)
 target_include_directories(verify PRIVATE sw/gb_manager/inc)
 #pico_generate_pio_header(verify
 #        ${CMAKE_CURRENT_LIST_DIR}/sw/gb_manager/src/comms.pio)
-pico_generate_pio_header(manager
+pico_generate_pio_header(verify
         ${CMAKE_CURRENT_LIST_DIR}/sw/gb_manager/src/ds1302.pio)
 target_compile_definitions(verify PRIVATE
         PICO_STDIO_ENABLE_CRLF_SUPPORT=0

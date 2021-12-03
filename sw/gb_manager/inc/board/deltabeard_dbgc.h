@@ -57,7 +57,8 @@
 #define PIO_RTC_IO		10
 #define PIO_RTC_CE		11
 // PIO1: Static state machine configuration
-#define PIO1_SM_RTC		0
+#define PIO1_SM_RTC_WR		0
+#define PIO1_SM_RTC_RD		1
 
 // --- FLASH ---
 #define PICO_BOOT_STAGE2_CHOOSE_W25Q080 1
