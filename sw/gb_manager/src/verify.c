@@ -153,16 +153,18 @@ void func_rtcread(const char *cmd)
 	(void) cmd;
 
 	gpio_put(PIO_RTC_CE, 1);
+	sleep_us(2);
 	*wrtx = RTC_WRITE_PROTECT;
 	*wrtx = 0x00;
 	gpio_put(PIO_RTC_CE, 0);
-	sleep_ms(1);
+	sleep_us(2);
 
 	gpio_put(PIO_RTC_CE, 1);
+	sleep_us(2);
 	*wrtx = RTC_RAM_0;
 	*wrtx = 0x69;
 	gpio_put(PIO_RTC_CE, 0);
-	sleep_ms(1);
+	sleep_us(2);
 
 	for(uint8_t reg_rd = RTC_SEC + RTC_RED_RD_BIT;
 		reg_rd <= (RTC_TRICKLE_CHARGER + RTC_RED_RD_BIT);
@@ -171,13 +173,16 @@ void func_rtcread(const char *cmd)
 		printf("%02X: ", reg_rd);
 
 		gpio_put(PIO_RTC_CE, 1);
+		sleep_us(2);
 		*wrtx = reg_rd;
 		*rdtx = 1;
-		while(pio_sm_is_rx_fifo_empty(pio1, PIO1_SM_RTC_RD) == true);
+		while(pio_sm_is_rx_fifo_empty(pio1, PIO1_SM_RTC_RD) == true)
+			sleep_us(2);
+
 		gpio_put(PIO_RTC_CE, 0);
 
 		printf("%02X\n", *rdrx);
-		sleep_ms(1);
+		sleep_us(2);
 	}
 
 	for(uint8_t reg_rd = RTC_RAM_0 + RTC_RED_RD_BIT;
@@ -189,11 +194,13 @@ void func_rtcread(const char *cmd)
 		gpio_put(PIO_RTC_CE, 1);
 		*wrtx = reg_rd;
 		*rdtx = 1;
-		while(pio_sm_is_rx_fifo_empty(pio1, PIO1_SM_RTC_RD) == true);
+		while(pio_sm_is_rx_fifo_empty(pio1, PIO1_SM_RTC_RD) == true)
+			sleep_us(2);
+
 		gpio_put(PIO_RTC_CE, 0);
 
 		printf("%02X\n", *rdrx);
-		sleep_ms(1);
+		sleep_us(2);
 	}
 
 	return;
