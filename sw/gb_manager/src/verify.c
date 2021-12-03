@@ -38,13 +38,10 @@ void func_help(const char *cmd);
 void func_rtcread(const char *cmd);
 void func_rtcwrite(const char *cmd);
 void func_gb(const char *cmd);
-void func_set_clock(const char *cmd);
 void func_framdump(const char *cmd);
 void func_framnuke(const char *cmd);
 void func_led(const char *cmd);
 void func_btn(const char *cmd);
-
-void func_date(const char *cmd);
 void func_reboot(const char *cmd);
 
 static const struct func_map map[] = {
@@ -60,8 +57,7 @@ static const struct func_map map[] = {
 	{ "BTN",	"Get button status",			func_btn	},
 	{ "GB",		"Turn GB on (0) or off (1)\n"
 			       "\t'GB 1'",			func_gb		},
-	{ "CLOCK",	"Set CPU clock speed",		func_set_clock	},
-	{ "REBOOT",	"Reboot to USBBOOT",		func_reboot 	}
+	{ "REBOOT",	"Reboot to USBBOOT",			func_reboot 	}
 };
 
 typedef enum {
@@ -124,28 +120,6 @@ void func_led(const char *cmd)
 
 	led_state = gpio_get(GPIO_LED_GREEN);
 	gpio_put(GPIO_LED_GREEN, !led_state);
-}
-
-void func_set_clock(const char *cmd)
-{
-	unsigned long vco;
-	cmd += strlen("PLAY ");
-	vco = strtoul(cmd, NULL, 10);
-	if(vco < 500 || vco > 1500)
-	{
-		printf("CLOCK VCO\n"
-		       "CPU clock will be set to VCO/2\n"
-		       "VCO must be between 1500 and 500\n");
-		return;
-	}
-
-	vco *= 1000 * 1000;
-	printf("Setting clock to %lu\n", vco / 2);
-	sleep_ms(10);
-	vreg_set_voltage(VREG_VOLTAGE_1_20);
-	sleep_ms(10);
-	set_sys_clock_pll(vco, 2, 1);
-	sleep_ms(10);
 }
 
 inline uint8_t bcd_to_int(uint8_t x)
@@ -213,7 +187,7 @@ void func_gb(const char *cmd)
 		turn_gb_on = false;
 	else
 	{
-		printf("Syntax error\n");
+		puts("Syntax error");
 		return;
 	}
 
@@ -244,6 +218,9 @@ _Noreturn void __no_inline_not_in_flash_func(usb_commander)(void)
 	char buf[64];
 
 new_cmd:
+	/* Reduce power consumption. */
+	sleep_ms(1);
+
 	printf("CMD> ");
 	for(unsigned i = 0; i < sizeof(buf); i++)
 	{
@@ -288,6 +265,7 @@ new_cmd:
 	}
 
 	printf("Unrecognised command '%s'\n", buf);
+
 	goto new_cmd;
 }
 
@@ -355,20 +333,8 @@ void init_peripherals(void)
 
 int main(void)
 {
-	{
-		/* The value for VCO set here is meant for least power
-		 * consumption. */
-		const unsigned vco = 512000000; /* 256MHz/128MHz */
-		const unsigned div1 = 2, div2 = 1;
-
-		vreg_set_voltage(VREG_VOLTAGE_1_15);
-		sleep_ms(4);
-		set_sys_clock_pll(vco, div1, div2);
-		sleep_ms(4);
-	}
-
+	set_sys_clock_48mhz();
 	init_peripherals();
-	bi_decl_if_func_used(bi_program_feature("PIO0 Game Boy Bus"));
 
 	/* If baudrate is set to PICO_STDIO_USB_RESET_MAGIC_BAUD_RATE, then the
 	 * RP2040 will reset to BOOTSEL mode. */
