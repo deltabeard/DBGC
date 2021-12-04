@@ -112,6 +112,15 @@ start:
 	xor a,a ; Set register a to 0
 	ld [rNR52], a
 
+	;; Initialise variables
+	; Disable VBlank IRQ function until OAM is initialised.
+	ld [vblank_routine_enable], a
+	; Inputs are connected to pull-up resistors, so when the user presses
+	; a button, the read value is 0. Hence we initialise the current input
+	; to all 1s.
+	ld a, $FF
+	ld [input_current], a
+
 	; Enable VBlank and STAT interrupts
 	; STAT interrupt will not occur.
 	ld a, IEF_VBLANK | IEF_STAT
@@ -135,13 +144,6 @@ start:
 	ld hl, _SCRN0
 	ld b, (_SCRN1 - _SCRN0)/8
 	call memset8
-
-	;; Initialise variables
-	; Inputs are connected to pull-up resistors, so when the user presses
-	; a button, the read value is 0. Hence we initialise the current input
-	; to all 1s.
-	ld a, $FF
-	ld [input_current], a
 
 	; Copy the tile data
 	UNPACK1BPP_SECTION _VRAM, "Font data"
@@ -197,15 +199,28 @@ ENDR
 	ld [rOBP1], a
 	ld [rBGP], a
 
+	; Enable VBlank IRQ function.
+	ld a, 1
+	ldh [vblank_routine_enable], a
+
 	; Turn the LCD on
 	ld hl, rLCDC
 	set 7, [hl]
 
+.dmg_errata
+	; ERRATA: DMG quick triggers VBlank IRQ on STAT IRQ enable.
+	; First halt and wait for VBlank interrupt.
+	halt
+	; Check that we are in VBlank here.
+	ld a, [rSTAT]
+	bit 1, a ; %10 and %11 means we're not in HBlank or VBlank.
+	jr nz, .dmg_errata ; halt until we wake up from VBlank.
+
 Main_Loop:
+	call draw_menu
+
 	; Wait for VBlank
 	halt
-
-	call draw_menu
 
 	jr Main_Loop
 
@@ -326,11 +341,11 @@ draw_menu::
 SECTION "IRQ Routines", ROM0
 ; VBlank IRQ to be used for modifying VRAM and OAM.
 vblank_irq::
-	; ERRATA: DMG quick triggers VBlank IRQ on STAT IRQ enable.
-	; Check that we are in VBlank here.
-	ld a, [rSTAT]
-	bit 1, a ; %10 and %11 means we're not in HBlank or VBlank.
-	jr nz, .end
+	; Don't do anything if routine is disabled. This is to stop use of
+	; OAM before it has been initialised.
+	ldh a, [vblank_routine_enable]
+	bit 0, a
+	jr z, .end
 
 	call handle_input
 
@@ -381,6 +396,8 @@ INCBIN "F77SMC6_8x8_mini.1bpp"
 SECTION "WRAM Variables", WRAM0[$c100]
 
 SECTION "HRAM", HRAM
+; Enable VBlank routine or not.
+vblank_routine_enable:: db
 ; Buttons currently held down. Use if input_number equals 0, otherwise AND with
 ; the real values of the input.
 input_current:: db
