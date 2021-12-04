@@ -206,20 +206,12 @@ ENDR
 	ld hl, rLCDC
 	set 7, [hl]
 
-.dmg_errata
-	; ERRATA: DMG quick triggers VBlank IRQ on STAT IRQ enable.
-	; First halt and wait for VBlank interrupt.
-	halt
-	; Check that we are in VBlank here.
-	ld a, [rSTAT]
-	bit 1, a ; %10 and %11 means we're not in HBlank or VBlank.
-	jr nz, .dmg_errata ; halt until we wake up from VBlank.
-
 Main_Loop:
-	call draw_menu
-
 	; Wait for VBlank
 	halt
+
+	call draw_menu
+	call handle_input
 
 	jr Main_Loop
 
@@ -240,6 +232,20 @@ rst38:
 	jp End
 
 SECTION "Main Loop", ROM0
+; Update cursor location in OAM RAM.
+update_cursor_oam::
+	; Set hl to sprite Y location
+	ld hl, _OAMRAM
+	ldh a, [cursor_y]
+	ld [hl], a ; Set value to OAM RAM
+
+	; Set hl to X location
+	inc hl
+	ldh a, [cursor_x]
+	ld [hl], a
+
+	ret
+
 ; Handle input.
 handle_input::
 	; Set input pins to buttons.
@@ -279,15 +285,12 @@ endr
 	ld a, P1F_GET_NONE
 	ldh [rP1], a
 
-	; Set hl to sprite Y location
-	ld hl, _OAMRAM
 .check_down
 	ldh a, [cursor_y]
 	bit 3, b
 	jr nz, .check_up
 	; Move sprite down by 8 pixels
 	add a, 8
-	ld [hl], a ; Set value to OAM RAM
 	ld [cursor_y], a ; Record new cursor location
 
 .check_up
@@ -295,24 +298,19 @@ endr
 	jr nz, .check_left
 	; Move sprite up by 8 pixels
 	sub a, 8
-	ld [hl], a
 	ld [cursor_y], a
 
 .check_left
-	; Set hl to X location
-	inc hl
 	ldh a, [cursor_x]
 	bit 1, b
 	jr nz, .check_right
 	dec a
-	ld [hl], a ; Move sprite left by 1 pixel
 	ld [cursor_x], a
 
 .check_right
 	bit 0, b
 	jr nz, .end
 	inc a
-	ld [hl], a ; Move sprite right by 1 pixel
 	ld [cursor_x], a
 
 .end
@@ -353,8 +351,13 @@ draw_menu::
 SECTION "IRQ Routines", ROM0
 ; VBlank IRQ to be used for modifying VRAM and OAM.
 vblank_irq::
-	call handle_input
+	; ERRATA: DMG quick triggers VBlank IRQ on STAT IRQ enable.
+	; Check that we are in VBlank here.
+	ld a, [rSTAT]
+	bit 1, a ; %10 and %11 means we're not in HBlank or VBlank.
+	jr nz, .end
 
+	call update_cursor_oam
 	; Enable Window on new VBlank to draw menu name.
 	ld hl, rLCDC
 	set 5, [hl]
