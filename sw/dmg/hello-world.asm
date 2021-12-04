@@ -112,15 +112,15 @@ start:
 	xor a,a ; Set register a to 0
 	ld [rNR52], a
 
-	ldh [cursor_y], a
-	ldh [cursor_x], a
-
 	;; Initialise variables
+	ld [cursor_y], a
+	ld [cursor_x], a
+	ld [menu_current], a
 	; Inputs are connected to pull-up resistors, so when the user presses
 	; a button, the read value is 0. Hence we initialise the current input
 	; to all 1s.
 	ld a, $FF
-	ld [input_current], a
+	ld [last_input], a
 
 	; Enable VBlank and STAT interrupts
 	; STAT interrupt will not occur.
@@ -149,18 +149,14 @@ start:
 	; Copy the tile data
 	UNPACK1BPP_SECTION _VRAM, "Font data"
 
-FOR N,1,32
-	; Write hello world
-	BG_LOC_HL 1,N
-	ld de, text_hello
-	ld b, text_hello_size
+	BG_LOC_HL 1,1
+	ld de, main_menu_entry_games
+	ld b, main_menu_entry_games_size
 	rst $00
-ENDR
 
-	; Write lorem ipsum
-	BG_LOC_HL 1,12
-	ld de, text_lorem
-	ld b, text_lorem_size
+	BG_LOC_HL 1,2
+	ld de, main_menu_entry_settings
+	ld b, main_menu_entry_settings_size
 	rst $00
 
 	; Write text to Window
@@ -236,12 +232,12 @@ SECTION "Main Loop", ROM0
 update_cursor_oam::
 	; Set hl to sprite Y location
 	ld hl, _OAMRAM
-	ldh a, [cursor_y]
+	ld a, [cursor_y]
 	ld [hl], a ; Set value to OAM RAM
 
 	; Set hl to X location
 	inc hl
-	ldh a, [cursor_x]
+	ld a, [cursor_x]
 	ld [hl], a
 
 	ret
@@ -251,10 +247,10 @@ handle_input::
 	; Set input pins to buttons.
 	ld a, P1F_GET_BTN
 	ldh [rP1], a
-rept 8
+REPT 8
 	; Read input to a.
 	ldh a, [rP1]
-endr
+ENDR
 	and a, $0F
 	; a is overwritten later, so store input status to b.
 	ld b, a
@@ -263,53 +259,55 @@ endr
 	; Set input pins to directional pad.
 	ld a, P1F_GET_DPAD
 	ldh [rP1], a
-rept 8
+REPT 8
 	; Read input to a.
 	ldh a, [rP1]
-endr
+ENDR
 	and a, $0F
 	; Place button nibble into high nibble of a.
 	xor a, b
-	; Store final result in b.
-	ld b, a
-	; Also store result in input_current for later.
-	ld [input_current], a
+	; Store raw result in c.
+	ld c, a
 
 	; Find different between previous and current input state.
-	;ldh a, [input_current]
-	;xor b
-	;and a, b
-	;ld b, a
+	ldh a, [last_input]
+	and a, c
+	xor a, c
+	ld b, a
+
+	; Also store result in last_input for later.
+	ld a, c
+	ld [last_input], a
 
 	; Deselect keys
 	ld a, P1F_GET_NONE
 	ldh [rP1], a
 
 .check_down
-	ldh a, [cursor_y]
+	ld a, [cursor_y]
 	bit 3, b
-	jr nz, .check_up
+	jr z, .check_up
 	; Move sprite down by 8 pixels
 	add a, 8
 	ld [cursor_y], a ; Record new cursor location
 
 .check_up
 	bit 2, b
-	jr nz, .check_left
+	jr z, .check_left
 	; Move sprite up by 8 pixels
 	sub a, 8
 	ld [cursor_y], a
 
 .check_left
-	ldh a, [cursor_x]
+	ld a, [cursor_x]
 	bit 1, b
-	jr nz, .check_right
+	jr z, .check_right
 	dec a
 	ld [cursor_x], a
 
 .check_right
 	bit 0, b
-	jr nz, .end
+	jr z, .end
 	inc a
 	ld [cursor_x], a
 
@@ -358,6 +356,7 @@ vblank_irq::
 	jr nz, .end
 
 	call update_cursor_oam
+
 	; Enable Window on new VBlank to draw menu name.
 	ld hl, rLCDC
 	set 5, [hl]
@@ -394,21 +393,41 @@ ENDR
 	jr nz, .loop
 	ret
 
+SECTION "Menu data", ROM0
+main_menu_data::
+.name: dw text_window
+.name_sz: db text_window_size
+.is_static: db 1
+.static_menu_entries: dw main_menu_entries
+.static_menu_entries_sz: db main_menu_entries_end - main_menu_entries
+
+main_menu_entries:
+dw main_menu_entry_games
+dw game_menu_function
+dw main_menu_entry_settings
+dw settings_menu_function
+main_menu_entries_end:
+
+game_menu_function: dw $0038
+settings_menu_function: dw $0038
+
 SECTION "Text", ROM0
-	new_str "Hello World!", text_hello
-	new_str "Lorem Ipsum.", text_lorem
 	new_str "Main Menu", text_window
+	new_str "Games", main_menu_entry_games
+	new_str "Settings", main_menu_entry_settings
 
 SECTION "Font data", ROM0
 INCBIN "F77SMC6_8x8_mini.1bpp"
 
-SECTION "WRAM Variables", WRAM0[$c100]
+SECTION "WRAM", WRAM0
 
 SECTION "HRAM", HRAM
 ; Buttons currently held down. Use if input_number equals 0, otherwise AND with
 ; the real values of the input.
-input_current:: db
+last_input:: db
 ; Cursor location
 cursor_x:: db
 cursor_y:: db
+; Menu data
+menu_current:: db
 
