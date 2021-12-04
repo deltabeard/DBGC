@@ -112,9 +112,10 @@ start:
 	xor a,a ; Set register a to 0
 	ld [rNR52], a
 
+	ldh [cursor_y], a
+	ldh [cursor_x], a
+
 	;; Initialise variables
-	; Disable VBlank IRQ function until OAM is initialised.
-	ld [vblank_routine_enable], a
 	; Inputs are connected to pull-up resistors, so when the user presses
 	; a button, the read value is 0. Hence we initialise the current input
 	; to all 1s.
@@ -169,12 +170,14 @@ ENDR
 	ld b, text_window_size
 	rst $00
 
-	; Set sprite one to cursor.
+	; Set sprite one to cursor, and initialise parameters.
 	ld hl, _OAMRAM
 	ld a, 16	; Set sprite Y location to 0
 	ld [hli], a
+	ldh [cursor_y], a
 	ld a, 8		; Set sprite X location to 0
 	ld [hli], a
+	ldh [cursor_x], a
 	ld a, ">"	; Set tile index for sprite
 	ld [hli], a
 	ld a, %00000000	; Set sprite attributes
@@ -198,10 +201,6 @@ ENDR
 	ld [rOBP0], a
 	ld [rOBP1], a
 	ld [rBGP], a
-
-	; Enable VBlank IRQ function.
-	ld a, 1
-	ldh [vblank_routine_enable], a
 
 	; Turn the LCD on
 	ld hl, rLCDC
@@ -246,62 +245,75 @@ handle_input::
 	; Set input pins to buttons.
 	ld a, P1F_GET_BTN
 	ldh [rP1], a
+rept 8
 	; Read input to a.
 	ldh a, [rP1]
+endr
 	and a, $0F
 	; a is overwritten later, so store input status to b.
 	ld b, a
-	swap b
+	swap b ; Store buttons in high nibble.
 
 	; Set input pins to directional pad.
 	ld a, P1F_GET_DPAD
 	ldh [rP1], a
+rept 8
 	; Read input to a.
 	ldh a, [rP1]
+endr
 	and a, $0F
-	; Place dpad bits in MSB of a.
+	; Place button nibble into high nibble of a.
 	xor a, b
-	; Store result in b.
+	; Store final result in b.
 	ld b, a
-
-	; Find different between previous and current input state.
-	ldh a, [input_current]
-	xor b
-	and a, b
-	ld b, a
-
 	; Also store result in input_current for later.
 	ld [input_current], a
+
+	; Find different between previous and current input state.
+	;ldh a, [input_current]
+	;xor b
+	;and a, b
+	;ld b, a
+
+	; Deselect keys
+	ld a, P1F_GET_NONE
+	ldh [rP1], a
 
 	; Set hl to sprite Y location
 	ld hl, _OAMRAM
 .check_down
+	ldh a, [cursor_y]
 	bit 3, b
 	jr nz, .check_up
 	; Move sprite down by 8 pixels
-	ld a, [hl]
 	add a, 8
-	ld [hl], a
+	ld [hl], a ; Set value to OAM RAM
+	ld [cursor_y], a ; Record new cursor location
 
 .check_up
 	bit 2, b
 	jr nz, .check_left
 	; Move sprite up by 8 pixels
-	ld a, [hl]
 	sub a, 8
 	ld [hl], a
+	ld [cursor_y], a
 
 .check_left
 	; Set hl to X location
 	inc hl
+	ldh a, [cursor_x]
 	bit 1, b
 	jr nz, .check_right
-	dec [hl] ; Move sprite down by 1 pixel
+	dec a
+	ld [hl], a ; Move sprite left by 1 pixel
+	ld [cursor_x], a
 
 .check_right
 	bit 0, b
 	jr nz, .end
-	inc [hl] ; Move sprite down by 1 pixel
+	inc a
+	ld [hl], a ; Move sprite right by 1 pixel
+	ld [cursor_x], a
 
 .end
 	ret
@@ -341,12 +353,6 @@ draw_menu::
 SECTION "IRQ Routines", ROM0
 ; VBlank IRQ to be used for modifying VRAM and OAM.
 vblank_irq::
-	; Don't do anything if routine is disabled. This is to stop use of
-	; OAM before it has been initialised.
-	ldh a, [vblank_routine_enable]
-	bit 0, a
-	jr z, .end
-
 	call handle_input
 
 	; Enable Window on new VBlank to draw menu name.
@@ -396,9 +402,10 @@ INCBIN "F77SMC6_8x8_mini.1bpp"
 SECTION "WRAM Variables", WRAM0[$c100]
 
 SECTION "HRAM", HRAM
-; Enable VBlank routine or not.
-vblank_routine_enable:: db
 ; Buttons currently held down. Use if input_number equals 0, otherwise AND with
 ; the real values of the input.
 input_current:: db
+; Cursor location
+cursor_x:: db
+cursor_y:: db
 
