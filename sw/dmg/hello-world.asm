@@ -29,6 +29,10 @@ MACRO BG_LOC_HL
 	ld hl, _SCRN0 + (\1 + (\2 * SCRN_VX_B))
 ENDM
 
+;; Task controller bits
+DEF MAIN_TASK_UPDATE_SCREEN_BIT	EQU 0
+DEF MAIN_TASK_READ_INPUT_BIT	EQU 1
+
 ;; DBGC manager registers
 DEF DBGC_OFF		EQU $7000
 ;; R/W RTC registers
@@ -116,6 +120,7 @@ start:
 	ld [cursor_y], a
 	ld [cursor_x], a
 	ld [menu_current], a
+	ld [main_tasks], a
 	; Inputs are connected to pull-up resistors, so when the user presses
 	; a button, the read value is 0. Hence we initialise the current input
 	; to all 1s.
@@ -203,12 +208,24 @@ start:
 	set 7, [hl]
 
 Main_Loop:
-	; Wait for VBlank
+	; Wait for interrupt.
 	halt
 
+.task_update_screen:
+	ld a, [main_tasks]
+	bit MAIN_TASK_UPDATE_SCREEN_BIT, a
+	jr z, .task_read_input
+
 	call draw_menu
+
+.task_read_input:
+	ld a, [main_tasks]
+	bit MAIN_TASK_READ_INPUT_BIT, a
+	jr z, Main_Loop
+
 	call handle_input
 
+.end
 	jr Main_Loop
 
 SECTION "Error Handler", ROM0
@@ -290,6 +307,7 @@ ENDR
 	; Move sprite down by 8 pixels
 	add a, 8
 	ld [cursor_y], a ; Record new cursor location
+	jr .set_update_screen
 
 .check_up
 	bit 2, b
@@ -297,6 +315,7 @@ ENDR
 	; Move sprite up by 8 pixels
 	sub a, 8
 	ld [cursor_y], a
+	jr .set_update_screen
 
 .check_left
 	ld a, [cursor_x]
@@ -304,19 +323,41 @@ ENDR
 	jr z, .check_right
 	dec a
 	ld [cursor_x], a
+	jr .set_update_screen
 
 .check_right
 	bit 0, b
 	jr z, .end
 	inc a
 	ld [cursor_x], a
+	jr .set_update_screen
 
 .end
+	; Clear Read Input task bit.
+	ld hl, main_tasks
+	res MAIN_TASK_READ_INPUT_BIT, [hl]
+
 	ret
+
+.set_update_screen
+	ld hl, main_tasks
+	set MAIN_TASK_UPDATE_SCREEN_BIT, [hl]
+	jr .end
 
 ; Draw current menu on screen.
 ; No parameters taken.
 draw_menu::
+	; Only run during HBlank or VBlank
+	ld a, [rSTAT]
+	bit 1, a ; %10 and %11 means we're not in HBlank or VBlank.
+	jr nz, .end
+
+	call update_cursor_oam
+
+	; Clear Update Screen task bit
+	ld hl, main_tasks
+	res MAIN_TASK_UPDATE_SCREEN_BIT, [hl]
+.end
 	ret
 
 ; Execute a DBGC instruction.
@@ -355,7 +396,9 @@ vblank_irq::
 	bit 1, a ; %10 and %11 means we're not in HBlank or VBlank.
 	jr nz, .end
 
-	call update_cursor_oam
+	; Read input on every VBlank.
+	ld hl, main_tasks
+	set MAIN_TASK_READ_INPUT_BIT, [hl]
 
 	; Enable Window on new VBlank to draw menu name.
 	ld hl, rLCDC
@@ -422,6 +465,11 @@ INCBIN "F77SMC6_8x8_mini.1bpp"
 SECTION "WRAM", WRAM0
 
 SECTION "HRAM", HRAM
+; Variable holding which tasks must be completed by the main loop. This is set
+; by the interrupts, and allows for the interrupt routines to be as short as
+; possible.
+main_tasks:: db
+
 ; Buttons currently held down. Use if input_number equals 0, otherwise AND with
 ; the real values of the input.
 last_input:: db
