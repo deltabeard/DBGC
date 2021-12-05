@@ -218,8 +218,8 @@ Main_Loop:
 
 	call draw_menu
 
-.task_read_input:
 	ld a, [main_tasks]
+.task_read_input:
 	bit MAIN_TASK_READ_INPUT_BIT, a
 	jr z, Main_Loop
 
