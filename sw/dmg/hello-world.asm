@@ -1,5 +1,6 @@
 INCLUDE "hardware.inc"
 INCLUDE "text_macros.inc"
+INCLUDE "menu_data.asm"
 
 ; Prints a message to the no$gmb / bgb debugger
 ; Accepts a string as input, see emulator doc for support
@@ -28,10 +29,6 @@ ENDM
 MACRO BG_LOC_HL
 	ld hl, _SCRN0 + (\1 + (\2 * SCRN_VX_B))
 ENDM
-
-;; Task controller bits
-DEF MAIN_TASK_UPDATE_SCREEN_BIT	EQU 0
-DEF MAIN_TASK_READ_INPUT_BIT	EQU 1
 
 ;; DBGC manager registers
 DEF DBGC_OFF		EQU $7000
@@ -119,13 +116,20 @@ start:
 	;; Initialise variables
 	ld [cursor_y], a
 	ld [cursor_x], a
-	ld [menu_current], a
-	ld [main_tasks], a
 	; Inputs are connected to pull-up resistors, so when the user presses
 	; a button, the read value is 0. Hence we initialise the current input
 	; to all 1s.
 	ld a, $FF
 	ld [last_input], a
+	; Enable all tasks on startup.
+	ld [main_tasks], a
+	; Set current menu to main menu.
+	ld bc, main_menu_data
+	ld hl, menu_current
+	ld a, c
+	ld [hli], a
+	ld a, b
+	ld [hli], a
 
 	; Enable VBlank and STAT interrupts
 	; STAT interrupt will not occur.
@@ -155,13 +159,13 @@ start:
 	UNPACK1BPP_SECTION _VRAM, "Font data"
 
 	BG_LOC_HL 1,1
-	ld de, main_menu_entry_games
-	ld b, main_menu_entry_games_size
+	ld de, games_menu_title
+	ld b, games_menu_title_size
 	rst $00
 
 	BG_LOC_HL 1,2
-	ld de, main_menu_entry_settings
-	ld b, main_menu_entry_settings_size
+	ld de, settings_menu_title
+	ld b, settings_menu_title_size
 	rst $00
 
 	; Write text to Window
@@ -173,7 +177,7 @@ start:
 
 	; Set sprite one to cursor, and initialise parameters.
 	ld hl, _OAMRAM
-	ld a, 16	; Set sprite Y location to 0
+	ld a, 24	; Set sprite Y location to 1
 	ld [hli], a
 	ldh [cursor_y], a
 	ld a, 8		; Set sprite X location to 0
@@ -245,20 +249,6 @@ rst38:
 	jp End
 
 SECTION "Main Loop", ROM0
-; Update cursor location in OAM RAM.
-update_cursor_oam::
-	; Set hl to sprite Y location
-	ld hl, _OAMRAM
-	ld a, [cursor_y]
-	ld [hl], a ; Set value to OAM RAM
-
-	; Set hl to X location
-	inc hl
-	ld a, [cursor_x]
-	ld [hl], a
-
-	ret
-
 ; Handle input.
 handle_input::
 	; Set input pins to buttons.
@@ -346,22 +336,6 @@ ENDR
 	set MAIN_TASK_UPDATE_SCREEN_BIT, [hl]
 	jr .end
 
-; Draw current menu on screen.
-; No parameters taken.
-draw_menu::
-	; Only run during HBlank or VBlank
-	ld a, [rSTAT]
-	bit 1, a ; %10 and %11 means we're not in HBlank or VBlank.
-	jr nz, .end
-
-	call update_cursor_oam
-
-	; Clear Update Screen task bit
-	ld hl, main_tasks
-	res MAIN_TASK_UPDATE_SCREEN_BIT, [hl]
-.end
-	ret
-
 ; Execute a DBGC instruction.
 ; Parameters:
 ; b = instruction
@@ -438,29 +412,6 @@ ENDR
 	jr nz, .loop
 	ret
 
-SECTION "Menu data", ROM0
-main_menu_data::
-.name: dw text_window
-.name_sz: db text_window_size
-.is_static: db 1
-.static_menu_entries: dw main_menu_entries
-.static_menu_entries_sz: db main_menu_entries_end - main_menu_entries
-
-main_menu_entries:
-dw main_menu_entry_games
-dw game_menu_function
-dw main_menu_entry_settings
-dw settings_menu_function
-main_menu_entries_end:
-
-game_menu_function: dw $0038
-settings_menu_function: dw $0038
-
-SECTION "Text", ROM0
-	new_str "Main Menu", text_window
-	new_str "Games", main_menu_entry_games
-	new_str "Settings", main_menu_entry_settings
-
 SECTION "Font data", ROM0
 INCBIN "F77SMC6_8x8_mini.1bpp"
 
@@ -478,6 +429,4 @@ last_input:: db
 ; Cursor location
 cursor_x:: db
 cursor_y:: db
-; Menu data
-menu_current:: db
 
