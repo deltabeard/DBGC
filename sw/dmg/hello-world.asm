@@ -283,6 +283,8 @@ ENDR
 	and a, $0F
 	; Place button nibble into high nibble of a.
 	xor a, b
+	; Make pressed buttons HIGH instead of LOW.
+	cpl
 	; Store raw result in c.
 	ld c, a
 
