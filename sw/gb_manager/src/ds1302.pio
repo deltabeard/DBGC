@@ -17,7 +17,7 @@
 .program ds1302_write
 
 ; Side-set pin for SCLK
-.side_set 1 opt
+.side_set 1
 
 ; IN pin is IO
 ; OUT pin is IO
@@ -26,31 +26,24 @@
 ; Read and writes cannot occur at the same time.
 
 ds1302_write_start:
-	set PINDIRS, 0		side 0; Set IO to input
-
 ;	Pull data from TX FIFO to OSR
 ;	This is not required if autopull is enabled
 	pull ifempty block	side 0
 
-	wait 0 irq 0
-        irq set 0
-
-	set PINDIRS, 1		; Set IO to output
+	set PINDIRS, 1		side 0; Set IO to output
 
 cmd_loop:
 ;	Output bit.
 	out PINS, 1		side 0
 ;	DS1302 reads on high edge of SCLK
 	jmp !OSRE cmd_loop	side 1 [1]
-
-	irq clear 0
 .wrap
 
 ;; Read byte from DS1302
 .program ds1302_read
 
 ; Side-set pin for SCLK
-.side_set 1 opt
+.side_set 1
 
 ; IN pin is IO
 ; OUT pin is IO
@@ -62,14 +55,13 @@ ds1302_read_start:
 ;	Pull number of bytes to read to OSR.
 	pull ifempty block	side 0
 
-	wait 0 irq 0
-	irq set 0
+	set PINDIRS, 0		side 0; Set IO to input
 
 ;	Set byte counter
 	;mov Y, OSR
-	out NULL, 8
+	out NULL, 8		side 0
 ;	Set bit counter
-	set X, 7
+	set X, 7		side 0
 
 ;read_byte:
 read_bit:
@@ -78,8 +70,6 @@ read_bit:
 
 	;set X, 7 ; Reset bit counter
 	;jmp Y-- read_byte
-
-	irq clear 0
 .wrap
 
 
@@ -91,7 +81,7 @@ void ds1302_program_init(PIO pio, unsigned sm_wr, unsigned sm_rd)
 	pio_sm_config sm_config_rd, sm_config_wr;
 	uint ds1302_write_off, ds1302_read_off;
 	const uint32_t target_sclk_hz = 512 * 1024;
-	uint16_t clkdiv = (uint16_t)(clock_get_hz(clk_sys)/target_sclk_hz);
+	uint16_t clkdiv = 256;//(uint16_t)(clock_get_hz(clk_sys)/target_sclk_hz);
 
 	ds1302_write_off = pio_add_program(pio, &ds1302_write_program);
 	ds1302_read_off = pio_add_program(pio, &ds1302_read_program);
@@ -103,6 +93,8 @@ void ds1302_program_init(PIO pio, unsigned sm_wr, unsigned sm_rd)
 	sm_config_set_in_pins(&sm_config_rd, PIO_RTC_IO);
 	sm_config_set_out_pins(&sm_config_wr, PIO_RTC_IO, 1);
 	sm_config_set_out_pins(&sm_config_rd, PIO_RTC_IO, 1);
+	sm_config_set_set_pins(&sm_config_wr, PIO_RTC_IO, 1);
+	sm_config_set_set_pins(&sm_config_rd, PIO_RTC_IO, 1);
 
 	/* Set number of bits in RX FIFO. */
 	/* TODO: This may only be required for autopush functionality. */
@@ -118,22 +110,19 @@ void ds1302_program_init(PIO pio, unsigned sm_wr, unsigned sm_rd)
 	/* Set initial pin directions. */
 	pio_sm_set_consecutive_pindirs(pio, sm_wr, PIO_RTC_SCLK, 1, true);
 	pio_sm_set_consecutive_pindirs(pio, sm_wr, PIO_RTC_IO, 1, false);
-	pio_sm_set_consecutive_pindirs(pio, sm_wr, PIO_RTC_CE, 1, true);
 	pio_sm_set_consecutive_pindirs(pio, sm_rd, PIO_RTC_SCLK, 1, true);
-        pio_sm_set_consecutive_pindirs(pio, sm_rd, PIO_RTC_IO, 1, false);
-        pio_sm_set_consecutive_pindirs(pio, sm_rd, PIO_RTC_CE, 1, true);
+	pio_sm_set_consecutive_pindirs(pio, sm_rd, PIO_RTC_IO, 1, false);
 
 	pio_gpio_init(pio, PIO_RTC_SCLK);
 	pio_gpio_init(pio, PIO_RTC_IO);
-	pio_gpio_init(pio, PIO_RTC_CE);
 
-        sm_config_set_sideset(&sm_config_wr, 1, true, false);
-        sm_config_set_sideset(&sm_config_rd, 1, true, false);
+	sm_config_set_sideset(&sm_config_wr, 1, false, false);
+	sm_config_set_sideset(&sm_config_rd, 1, false, false);
 	sm_config_set_sideset_pins(&sm_config_wr, PIO_RTC_SCLK);
 	sm_config_set_sideset_pins(&sm_config_rd, PIO_RTC_SCLK);
 
 	/* Initialise all state machines. */
-	pio_sm_init(pio, sm_wr, ds1302_write_off,  &sm_config_wr);
-	pio_sm_init(pio, sm_rd, ds1302_read_off,  &sm_config_rd);
+	pio_sm_init(pio, sm_wr, ds1302_write_off, &sm_config_wr);
+	pio_sm_init(pio, sm_rd, ds1302_read_off, &sm_config_rd);
 }
 %}

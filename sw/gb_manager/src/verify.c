@@ -120,26 +120,101 @@ uint8_t decToBcd(uint8_t val)
 	return ((val/10*16) + (val%10));
 }
 
+// Copyright (c) 2009, Matt Sparks
+// All rights reserved.
+// https://github.com/msparks/arduino-ds1302/
+// Distributed under the 2-clause BSD license.
+void ds1302_write(const uint8_t value, bool read_after)
+{
+	gpio_set_dir(PIO_RTC_IO, 1);
+	for (int i = 0; i < 8; ++i) {
+		gpio_put(PIO_RTC_IO, (value >> i) & 1);
+		sleep_us(4);
+		gpio_put(PIO_RTC_SCLK, 1);
+		sleep_us(4);
+
+		if (read_after && i == 7) {
+			// We're about to read data -- ensure the pin is back in input mode
+			// before the clock is lowered.
+			gpio_set_dir(PIO_RTC_IO, 0);
+		} else {
+			gpio_put(PIO_RTC_SCLK, 0);
+			sleep_us(4);
+		}
+	}
+}
+uint8_t ds1302_read(void)
+{
+	uint8_t input_value = 0;
+	uint8_t bit = 0;
+	gpio_set_dir(PIO_RTC_IO, 0);
+
+	// Bits from the DS1302 are output on the falling edge of the clock
+	// cycle. This is called after readIn (which will leave the clock low) or
+	// writeOut(..., true) (which will leave it high).
+	for (int i = 0; i < 8; ++i) {
+		gpio_put(PIO_RTC_SCLK, 1);
+		sleep_us(4);
+		gpio_put(PIO_RTC_SCLK, 0);
+		sleep_us(4);
+
+		bit = gpio_get(PIO_RTC_IO);
+		input_value |= (bit << i);  // Bits are read LSB first.
+	}
+
+	return input_value;
+}
+
+uint8_t ds1302_read_register(const rtc_reg_wr reg)
+{
+	const uint8_t cmd_byte = reg | 0x1;
+	uint8_t ret;
+
+	gpio_put(GPIO_RTC_CE, 1);
+	sleep_us(4);
+	ds1302_write(cmd_byte, true);
+	ret = ds1302_read();
+	gpio_put(GPIO_RTC_CE, 0);
+
+	return ret;
+}
+
+void ds1302_write_register(const rtc_reg_wr reg, const uint8_t value)
+{
+	const uint8_t cmd_byte = reg;
+
+	gpio_put(GPIO_RTC_CE, 1);
+	sleep_us(4);
+	ds1302_write(cmd_byte, false);
+	ds1302_write(value, false);
+	gpio_put(GPIO_RTC_CE, 0);
+}
+
 void func_rtcwrite(const char *cmd)
 {
 	int ret;
-	uint8_t tx[8];
+	uint8_t tx[7];
+	uint8_t *send = &tx[0];
 
-	return;
-
-	tx[0] = RTC_SEC;
-
-	//RTC WRITE <DOTW>:<DAY>/<MONTH>/<YEAR> <HOUR>:<MIN>:<SEC>
+	//RTC WRITE <DAY>:<DATE>/<MONTH>/<YEAR> <HOUR>:<MIN>:<SEC>
 	ret = sscanf(cmd, "RTC WRITE %hhx:%hhx/%hhx/%hhx %hhx:%hhx:%hhx",
-		&tx[RTC_DAY+1], &tx[RTC_DATE+1], &tx[RTC_MONTH+1],
-		&tx[RTC_YEAR+1], &tx[RTC_HOUR+1], &tx[RTC_MIN+1],
-		&tx[RTC_SEC+1]);
+		&tx[5], &tx[3], &tx[4],
+		&tx[6], &tx[2], &tx[1],
+		&tx[0]);
 	if(ret != 7)
 	{
 		printf("sscanf acquired only %d items of %d from string "
 		       "'%s'\n", ret, 7, cmd);
 		return;
 	}
+
+	ds1302_write_register(RTC_WRITE_PROTECT, 0x00);
+	for(rtc_reg_wr reg = RTC_SEC; reg <= RTC_YEAR; reg += 2)
+	{
+		ds1302_write_register(reg, *send);
+		send++;
+	}
+	ds1302_write_register(RTC_WRITE_PROTECT, 0xFF);
 
 	return;
 }
@@ -152,18 +227,26 @@ void func_rtcread(const char *cmd)
 
 	(void) cmd;
 
-	gpio_put(PIO_RTC_CE, 1);
-	sleep_us(2);
-	*wrtx = RTC_WRITE_PROTECT;
-	*wrtx = 0x00;
-	gpio_put(PIO_RTC_CE, 0);
-	sleep_us(2);
+	for(rtc_reg_wr reg = RTC_SEC; reg <= RTC_TRICKLE_CHARGER; reg += 2)
+	{
+		printf("%02X: %02X\n", reg, ds1302_read_register(reg));
+	}
 
-	gpio_put(PIO_RTC_CE, 1);
+	for(rtc_reg_wr reg = RTC_RAM_0; reg <= RTC_RAM_31; reg += 2)
+	{
+		printf("%02X ", ds1302_read_register(reg));
+		if((reg % 8) == 7)
+			putchar('\n');
+	}
+
+	putchar('\n');
+
+#if 0
+	gpio_put(GPIO_RTC_CE, 1);
 	sleep_us(2);
 	*wrtx = RTC_RAM_0;
 	*wrtx = 0x69;
-	gpio_put(PIO_RTC_CE, 0);
+	gpio_put(GPIO_RTC_CE, 0);
 	sleep_us(2);
 
 	for(uint8_t reg_rd = RTC_SEC + RTC_RED_RD_BIT;
@@ -172,14 +255,14 @@ void func_rtcread(const char *cmd)
 	{
 		printf("%02X: ", reg_rd);
 
-		gpio_put(PIO_RTC_CE, 1);
+		gpio_put(GPIO_RTC_CE, 1);
 		sleep_us(2);
 		*wrtx = reg_rd;
 		*rdtx = 1;
 		while(pio_sm_is_rx_fifo_empty(pio1, PIO1_SM_RTC_RD) == true)
 			sleep_us(2);
 
-		gpio_put(PIO_RTC_CE, 0);
+		gpio_put(GPIO_RTC_CE, 0);
 
 		printf("%02X\n", *rdrx);
 		sleep_us(2);
@@ -191,18 +274,18 @@ void func_rtcread(const char *cmd)
 	{
 		printf("%02X: ", reg_rd);
 
-		gpio_put(PIO_RTC_CE, 1);
+		gpio_put(GPIO_RTC_CE, 1);
 		*wrtx = reg_rd;
 		*rdtx = 1;
 		while(pio_sm_is_rx_fifo_empty(pio1, PIO1_SM_RTC_RD) == true)
 			sleep_us(2);
 
-		gpio_put(PIO_RTC_CE, 0);
+		gpio_put(GPIO_RTC_CE, 0);
 
 		printf("%02X\n", *rdrx);
 		sleep_us(2);
 	}
-
+#endif
 	return;
 }
 
@@ -340,17 +423,24 @@ void init_peripherals(void)
 			1 << GPIO_SWITCH | /* Not required for inputs. */
 			1 << GPIO_MOTOR |
 			1 << GPIO_GB_RESET |
-			1 << SPI_CSn);
+			1 << SPI_CSn |
+			1 << PIO_RTC_SCLK |
+			1 << PIO_RTC_IO |
+			1 << GPIO_RTC_CE);
 	/* Set GPIO pin directions. */
 	gpio_set_dir_out_masked(1 << GPIO_LED_GREEN |
 			1 << GPIO_MOTOR |
 			1 << GPIO_GB_RESET |
-			1 << SPI_CSn);
+			1 << SPI_CSn |
+			1 << PIO_RTC_SCLK |
+			1 << GPIO_RTC_CE);
 	/* Set initial output state. */
 	gpio_set_mask(0 << GPIO_LED_GREEN |
 			0 << GPIO_MOTOR |
 			1 << GPIO_GB_RESET | /* Hold GB in reset. */
-			1 << SPI_CSn);
+			1 << SPI_CSn |
+			0 << PIO_RTC_SCLK |
+			0 << GPIO_RTC_CE);
 
 	/* Set pulls. */
 	gpio_disable_pulls(GPIO_LED_GREEN);
@@ -381,15 +471,14 @@ void init_peripherals(void)
 		pio_gpio_init(pio0, pin);
 	}
 
+#if 0
 	/* Initialise PIO1 (RTC) */
-	pio_gpio_init(pio1, PIO_RTC_SCLK);
-	pio_gpio_init(pio1, PIO_RTC_IO);
-	pio_gpio_init(pio1, PIO_RTC_CE);
 	ds1302_program_init(pio1, PIO1_SM_RTC_WR, PIO1_SM_RTC_RD);
 	/* Enable state machines. */
 	pio_sm_set_enabled(pio1, PIO1_SM_RTC_WR, true);
 	/* PIO_SM_NCS should be enabled when cart RAM access is expected. */
 	pio_sm_set_enabled(pio1, PIO1_SM_RTC_RD, true);
+#endif
 
 	/** SPI **/
 	/* Default settings of spi_init are correct for the MB85RS256B. */

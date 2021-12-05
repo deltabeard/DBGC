@@ -55,7 +55,7 @@
 // --- PIO1 ---
 #define PIO_RTC_SCLK		9
 #define PIO_RTC_IO		10
-#define PIO_RTC_CE		11
+#define GPIO_RTC_CE		11
 // PIO1: Static state machine configuration
 #define PIO1_SM_RTC_WR		0
 #define PIO1_SM_RTC_RD		1
