@@ -1,8 +1,14 @@
+INCLUDE "constants.inc"
+INCLUDE "hardware.inc"
+INCLUDE "text_macros.inc"
+
 SECTION "Menu data", ROM0
 
-;; Task controller bits
-DEF MAIN_TASK_UPDATE_SCREEN_BIT	EQU 0
-DEF MAIN_TASK_READ_INPUT_BIT	EQU 1
+; Calculates an address of a specific tile in VRAM and copies it to hl.
+; BG_LOC X Y
+MACRO BG_LOC_HL
+	ld hl, _SCRN0 + (\1 + (\2 * SCRN_VX_B))
+ENDM
 
 main_menu_data::
 ; Name to display at the top of the screen.
@@ -112,6 +118,27 @@ constrain_cursor::
 .end:
 	ret
 
+set_menu_title:
+	; Write text to Window
+	; Center align text
+	ld hl, _SCRN1 + ((SCRN_X_B - text_window_size) / 2)
+	ld de, text_window
+	ld b, text_window_size
+	rst $00
+	ret
+
+set_menu_entries:
+	BG_LOC_HL 1,1
+	ld de, games_menu_title
+	ld b, games_menu_title_size
+	rst $00
+
+	BG_LOC_HL 1,2
+	ld de, settings_menu_title
+	ld b, settings_menu_title_size
+	rst $00
+
+	ret
 
 ; Draw current menu on screen.
 ; No parameters taken.
@@ -123,6 +150,8 @@ draw_menu::
 
 	call constrain_cursor
 	call update_cursor_oam
+	call set_menu_title
+	call set_menu_entries
 
 	; Clear Update Screen task bit
 	ld hl, main_tasks

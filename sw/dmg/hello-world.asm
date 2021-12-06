@@ -1,6 +1,6 @@
+INCLUDE "constants.inc"
 INCLUDE "hardware.inc"
 INCLUDE "text_macros.inc"
-INCLUDE "menu_data.asm"
 
 ; Prints a message to the no$gmb / bgb debugger
 ; Accepts a string as input, see emulator doc for support
@@ -22,12 +22,6 @@ MACRO UNPACK1BPP_SECTION
 	ld b, SIZEOF(\2)/8
 	ASSERT SIZEOF(\2) % 8 == 0
 	call unpack_1bpp
-ENDM
-
-; Calculates an address of a specific tile in VRAM and copies it to hl.
-; BG_LOC X Y
-MACRO BG_LOC_HL
-	ld hl, _SCRN0 + (\1 + (\2 * SCRN_VX_B))
 ENDM
 
 ;; DBGC manager registers
@@ -157,23 +151,6 @@ start:
 
 	; Copy the tile data
 	UNPACK1BPP_SECTION _VRAM, "Font data"
-
-	BG_LOC_HL 1,1
-	ld de, games_menu_title
-	ld b, games_menu_title_size
-	rst $00
-
-	BG_LOC_HL 1,2
-	ld de, settings_menu_title
-	ld b, settings_menu_title_size
-	rst $00
-
-	; Write text to Window
-	; Center align text
-	ld hl, _SCRN1 + ((SCRN_X_B - text_window_size) / 2)
-	ld de, text_window
-	ld b, text_window_size
-	rst $00
 
 	; Set sprite one to cursor, and initialise parameters.
 	ld hl, _OAMRAM
