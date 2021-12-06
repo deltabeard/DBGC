@@ -25,6 +25,7 @@ main_menu_data::
 ; Number of entries at pointer.
 .static_menu_entries_sz: db (main_menu_entries_end - main_menu_entries)/2
 
+DEF MENU_ENTRIES_OFFSET EQU (main_menu_data.static_menu_entries - main_menu_data)
 DEF MENU_ENTRIES_SZ_OFFSET EQU (main_menu_data.static_menu_entries_sz - main_menu_data)
 
 game_menu_data::
@@ -125,23 +126,91 @@ set_menu_title:
 	ret
 
 set_menu_entries:
-	; Get menu data
-	;ld hl, menu_current
-	; Get menu entries
-	; Get number of menu entries
+	;; Get menu data.
+	ld hl, menu_current
+	ld a, [hli]
+	ld c, a
+	ld a, [hli]
+	ld b, a
+
+	ld h, b
+	ld l, c
+
+	;; Get number of menu entries.
+	; Add offset to get number of menu entries.
+	ld b, 0
+	ld c, MENU_ENTRIES_SZ_OFFSET
+	add hl, bc
+	; Store number of menu entries in b.
+	ld b, [hl]
+	; Store current entry in c.
+	ld c, 0
+
+	;; Get menu entries
+	ld hl, menu_current
+	ld d, 0
+	ld e, MENU_ENTRIES_OFFSET
+	add hl, de
+	; Store pointer to menu entries in de.
+	ld a, [hli]
+	ld d, a
+	ld a, [hl]
+	ld e, a
+
 	; For each menu entry, print name of entry onto menu
+.next_entry
+	; Get pointer to menu entry 
+	ld h, d
+	ld l, e
 
+	; Store current entry in a for subroutine.
+	ld a, c
 
-	BG_LOC_HL 1,1
+	; bc and de are already being used, so we push the stack.
+	push bc
+	push de
+
+	; Store current entry in c
+	ld c, a
+
+	; Load pointer to entry name.
+	ld a, [hli]
+	ld d, a
+	ld a, [hl]
+	ld e, a
+	; Load entry name size.
+	ld a, [hl]
+	ld b, a
+
+	; Determine target location.
+	ld h, HIGH(_SCRN0)
+	; Load menu entry number.
+	ld l, c
+	; First menu entry is 1.
+	inc l
+	; Multiply by SCRN_VX_B = 32 = 2^5
+	sla l
+	sla l
+	sla l
+	sla l
+	sla l
+	; Perform memcpy
 	ld de, games_menu_title
 	ld b, games_menu_title_size
 	rst $00
 
-	BG_LOC_HL 1,2
-	ld de, settings_menu_title
-	ld b, settings_menu_title_size
-	rst $00
+	pop de
+	pop bc
 
+	; Move to next menu entry.
+	inc de
+	; Check if there are menu entries remaining.
+	inc c
+	ld a, c
+	cp a, b
+	jr nz, .next_entry
+
+.end
 	ret
 
 ; Draw current menu on screen.
@@ -169,6 +238,6 @@ SECTION "Text", ROM0
 	new_str "Settings", settings_menu_title
 
 SECTION "WRAM Dynamic Menu", WRAM0
-; Menu data
+; Pointer to the data of the current menu.
 menu_current:: dw
 
