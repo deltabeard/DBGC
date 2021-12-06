@@ -23,7 +23,9 @@ main_menu_data::
 ; Pointer to menu entries array.
 .static_menu_entries: dw main_menu_entries
 ; Number of entries at pointer.
-.static_menu_entries_sz: db main_menu_entries_end - main_menu_entries
+.static_menu_entries_sz: db (main_menu_entries_end - main_menu_entries)/2
+
+DEF MENU_ENTRIES_SZ_OFFSET EQU (main_menu_data.static_menu_entries_sz - main_menu_data)
 
 game_menu_data::
 .name: dw games_menu_title
@@ -46,11 +48,6 @@ dw game_menu_data
 dw settings_menu_data
 main_menu_entries_end:
 
-SECTION "Text", ROM0
-	new_str "Main Menu", text_window
-	new_str "Games", games_menu_title
-	new_str "Settings", settings_menu_title
-
 SECTION "Menu Functions", ROM0
 
 ; Update cursor location in OAM RAM.
@@ -72,11 +69,11 @@ constrain_cursor::
 	; Cursor needs to be within the first and final menu entry.
 .y_check_min
 	ld a, [cursor_y]
-	cp a, 24
+	cp a, OAM_Y_OFS + 8
 	jr nc, .y_check_max ; a > 24
 	; If a < 24 then sprite cursor is before the first element. So move it
 	; to the first element.
-	ld a, 24
+	ld a, OAM_Y_OFS + 8
 	ld [cursor_y], a ; Set new cursor position.
 	jr .x_check
 
@@ -91,7 +88,7 @@ constrain_cursor::
 	ld l, c
 	; Set offset of number of menu entries.
 	ld d, 0
-	ld e, $0E
+	ld e, MENU_ENTRIES_SZ_OFFSET
 	add hl, de
 	; Load number of menu entries.
 	ld a, [hl]
@@ -101,7 +98,7 @@ constrain_cursor::
 	sla a
 	sla a
 	; Add cursor offset
-	add a, 24
+	add a, OAM_Y_OFS
 	ld b, a
 	; Check if cursor is higher than this number.
 	ld a, [cursor_y]
@@ -112,7 +109,7 @@ constrain_cursor::
 	
 .x_check:
 	; Cursor cannot be moved left or right.
-	ld a, 8
+	ld a, OAM_X_OFS
 	ld [cursor_x], a
 
 .end:
@@ -128,6 +125,13 @@ set_menu_title:
 	ret
 
 set_menu_entries:
+	; Get menu data
+	;ld hl, menu_current
+	; Get menu entries
+	; Get number of menu entries
+	; For each menu entry, print name of entry onto menu
+
+
 	BG_LOC_HL 1,1
 	ld de, games_menu_title
 	ld b, games_menu_title_size
@@ -158,6 +162,11 @@ draw_menu::
 	res MAIN_TASK_UPDATE_SCREEN_BIT, [hl]
 .end
 	ret
+
+SECTION "Text", ROM0
+	new_str "Main Menu", text_window
+	new_str "Games", games_menu_title
+	new_str "Settings", settings_menu_title
 
 SECTION "WRAM Dynamic Menu", WRAM0
 ; Menu data

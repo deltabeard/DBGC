@@ -1,3 +1,7 @@
+INCLUDE "hardware.inc"
+
+;; OAM RAM Sprite locations
+DEF CURSOR_SPRITE_OAMRAM	EQU _OAMRAM
 
 ;; Task controller bits
 DEF MAIN_TASK_UPDATE_SCREEN_BIT	EQU 0

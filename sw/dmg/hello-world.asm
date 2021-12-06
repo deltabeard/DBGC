@@ -153,7 +153,7 @@ start:
 	UNPACK1BPP_SECTION _VRAM, "Font data"
 
 	; Set sprite one to cursor, and initialise parameters.
-	ld hl, _OAMRAM
+	ld hl, CURSOR_SPRITE_OAMRAM
 	ld a, 24	; Set sprite Y location to 1
 	ld [hli], a
 	ldh [cursor_y], a
