@@ -195,16 +195,12 @@ Main_Loop:
 .task_update_screen:
 	ld a, [main_tasks]
 	bit MAIN_TASK_UPDATE_SCREEN_BIT, a
-	jr z, .task_read_input
-
-	call draw_menu
+	call nz, draw_menu
 
 	ld a, [main_tasks]
 .task_read_input:
 	bit MAIN_TASK_READ_INPUT_BIT, a
-	jr z, Main_Loop
-
-	call handle_input
+	call nz, handle_input
 
 .end
 	jr Main_Loop
