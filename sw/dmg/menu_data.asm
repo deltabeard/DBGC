@@ -127,14 +127,16 @@ set_menu_title:
 
 set_menu_entries:
 	;; Get menu data.
+	; Read pointer to menu data.
 	ld hl, menu_current
 	ld a, [hli]
-	ld c, a
-	ld a, [hli]
-	ld b, a
+	ld e, a
+	ld d, [hl]
 
-	ld h, b
-	ld l, c
+	; Load pointer to menu data.
+	; TODO: Optimise with above instructions.
+	ld h, d
+	ld l, e
 
 	;; Get number of menu entries.
 	; Add offset to get number of menu entries.
@@ -147,40 +149,59 @@ set_menu_entries:
 	ld c, 0
 
 	;; Get menu entries
-	ld hl, menu_current
+	; Load pointer to menu data again.
+	ld h, d
+	ld l, e
+
+	; Move pointer to first menu entry pointer.
 	ld d, 0
 	ld e, MENU_ENTRIES_OFFSET
 	add hl, de
-	; Store pointer to menu entries in de.
+	; Store array of pointers to menu entries in de.
 	ld a, [hli]
-	ld d, a
-	ld a, [hl]
 	ld e, a
+	ld d, [hl]
 
 	; For each menu entry, print name of entry onto menu
 .next_entry
-	; Get pointer to menu entry 
+	; Get pointer to menu entry.
 	ld h, d
 	ld l, e
 
 	; Store current entry in a for subroutine.
-	ld a, c
+	;ld a, c
 
 	; bc and de are already being used, so we push the stack.
 	push bc
 	push de
+	push hl
 
 	; Store current entry in c
-	ld c, a
+	;ld c, ao
 
-	; Load pointer to entry name.
+	; Dereference pointer to entry data.
+	ld a, [hli]
+	ld e, a
 	ld a, [hli]
 	ld d, a
-	ld a, [hl]
+	ld h, d
+	ld l, e
+
+	; Load pointer to entry name into de. Offset to name is 0 bytes.
+	ld a, [hli]
 	ld e, a
-	; Load entry name size.
-	ld a, [hl]
-	ld b, a
+	ld a, [hli]
+	ld d, a
+
+	; Load entry name size into b.
+	ld b, [hl]
+	;ld b, 5
+
+	;ld h, d
+	;ld l, e
+	;ld a, [hli]
+	;ld e, a
+	;ld d, [hl]
 
 	; Determine target location.
 	ld h, HIGH(_SCRN0)
@@ -194,16 +215,18 @@ set_menu_entries:
 	sla l
 	sla l
 	sla l
+	; Offset text by one tile to make space for the cursor.
+	inc l
 	; Perform memcpy
-	ld de, games_menu_title
-	ld b, games_menu_title_size
 	rst $00
 
+	pop hl
 	pop de
 	pop bc
 
 	; Move to next menu entry.
-	inc de
+	;inc de
+	;inc de
 	; Check if there are menu entries remaining.
 	inc c
 	ld a, c
