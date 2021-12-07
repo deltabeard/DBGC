@@ -117,6 +117,7 @@ constrain_cursor::
 	ret
 
 set_menu_title:
+	; TODO: Dynamically set menu title
 	; Write text to Window
 	; Center align text
 	ld hl, _SCRN1 + ((SCRN_X_B - text_window_size) / 2)
@@ -175,8 +176,7 @@ set_menu_entries:
 	; Dereference pointer to entry data.
 	ld a, [hli]
 	ld e, a
-	ld a, [hli]
-	ld d, a
+	ld d, [hl]
 	ld h, d
 	ld l, e
 
