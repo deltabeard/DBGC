@@ -168,16 +168,9 @@ set_menu_entries:
 	ld h, d
 	ld l, e
 
-	; Store current entry in a for subroutine.
-	;ld a, c
-
 	; bc and de are already being used, so we push the stack.
 	push bc
 	push de
-	push hl
-
-	; Store current entry in c
-	;ld c, ao
 
 	; Dereference pointer to entry data.
 	ld a, [hli]
@@ -195,13 +188,6 @@ set_menu_entries:
 
 	; Load entry name size into b.
 	ld b, [hl]
-	;ld b, 5
-
-	;ld h, d
-	;ld l, e
-	;ld a, [hli]
-	;ld e, a
-	;ld d, [hl]
 
 	; Determine target location.
 	ld h, HIGH(_SCRN0)
@@ -220,13 +206,12 @@ set_menu_entries:
 	; Perform memcpy
 	rst $00
 
-	pop hl
 	pop de
 	pop bc
 
 	; Move to next menu entry.
-	;inc de
-	;inc de
+	inc de
+	inc de
 	; Check if there are menu entries remaining.
 	inc c
 	ld a, c
