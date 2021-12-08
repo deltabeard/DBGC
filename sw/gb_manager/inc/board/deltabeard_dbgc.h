@@ -51,6 +51,7 @@
 #define PIO_SM_A15		0
 #define PIO_SM_NCS		1
 #define PIO_SM_DO		2
+#define PIO_SM_DI		3
 
 // --- PIO1 ---
 #define PIO_RTC_SCLK		9

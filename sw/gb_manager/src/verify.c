@@ -25,6 +25,9 @@
 
 #include <ds1302.pio.h>
 #include <generic.h>
+#include <pico/multicore.h>
+#include <hardware/structs/bus_ctrl.h>
+#include "libbet.gb.h"
 
 #define CURRENT_MILLENNIUM	21
 #define RTC_YEARS_EPOCH		((CURRENT_MILLENNIUM - 1) * 100)
@@ -41,6 +44,7 @@ void func_rtcwrite(const char *cmd);
 void func_gb(const char *cmd);
 void func_framdump(const char *cmd);
 void func_framnuke(const char *cmd);
+void func_play(const char *cmd);
 void func_led(const char *cmd);
 void func_info(const char *cmd);
 void func_btn(const char *cmd);
@@ -60,6 +64,7 @@ static const struct func_map map[] = {
 	{ "BTN",	"Get button status",			func_btn	},
 	{ "GB",		"Turn GB on (0) or off (1)\n"
 			       "\t'GB 1'",			func_gb		},
+	{ "PLAY",	"Play a test ROM on the Game Boy",	func_play	},
 	{ "REBOOT",	"Reboot to USBBOOT",			func_reboot 	}
 };
 
@@ -108,6 +113,46 @@ void func_led(const char *cmd)
 
 	led_state = gpio_get(GPIO_LED_GREEN);
 	gpio_put(GPIO_LED_GREEN, !led_state);
+}
+
+_Noreturn void core1_play_rom(void)
+{
+	while(1)
+	{
+		io_ro_8 *data_rx = (io_ro_8 *) &pio1->rxf[PIO_SM_DI] + 3;
+		io_wo_8 *data_tx = (io_wo_8 *) &pio1->rxf[PIO_SM_DO] + 3;
+		io_ro_16 *addr_a15 = (io_ro_16 *) &pio1->rxf[PIO_SM_A15] + 1;
+		io_ro_16 *addr_ncs = (io_ro_16 *) &pio1->rxf[PIO_SM_NCS] + 1;
+		
+		uint16_t address;
+
+		/* Wait until we receive a new address. */
+		while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15));
+
+		/* Only reads are expected in a non-banked ROM. */
+		address = *rx_sm_a15;
+		*tx_sm_do = libbet_gb[address];
+	}
+}
+
+void func_play(const char *cmd)
+{
+	static bool already_playing = false;
+
+	(void) cmd;
+
+	if(already_playing == false)
+	{
+		puts("Already playing");
+		return;
+	}
+
+	already_playing = true;
+
+	/* Grant high bus priority to the second core. */
+	bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_PROC1_BITS;
+
+	multicore_launch_core1(core1_play_rom);
 }
 
 inline uint8_t bcd_to_int(uint8_t x)
@@ -221,7 +266,6 @@ void func_rtcwrite(const char *cmd)
 
 void func_rtcread(const char *cmd)
 {
-	io_ro_32 *rdrx = (io_ro_32 *) &pio1->rxf[PIO1_SM_RTC_RD];
 	io_wo_32 *rdtx = (io_wo_32 *) &pio1->txf[PIO1_SM_RTC_RD];
 	io_wo_32 *wrtx = (io_wo_32 *) &pio1->txf[PIO1_SM_RTC_WR];
 

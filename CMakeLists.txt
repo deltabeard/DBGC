@@ -98,7 +98,6 @@ pico_enable_stdio_uart(manager 0)
 pico_add_verbose_dis_output(manager)
 pico_add_bin_output(manager)
 pico_add_uf2_output(manager)
-pico_set_binary_type(manager copy_to_ram)
 
 add_executable(verify sw/gb_manager/src/verify.c)
 add_dependencies(verify gb_manager)
@@ -110,7 +109,11 @@ pico_generate_pio_header(verify
 target_compile_definitions(verify PRIVATE
         PICO_STDIO_ENABLE_CRLF_SUPPORT=0
         PICO_STDIO_DEFAULT_CRLF=0
-        PARAM_ASSERTIONS_DISABLE_ALL=1)
+        PARAM_ASSERTIONS_DISABLE_ALL=1
+        PICO_PRINTF_SUPPORT_FLOAT=0
+        PICO_PRINTF_SUPPORT_EXPONENTIAL=0
+        PICO_PRINTF_SUPPORT_LONG_LONG=0
+        PICO_PRINTF_SUPPORT_PTRDIFF_T=0)
 target_link_libraries(verify
         pico_stdlib pico_stdio pico_bootrom pico_multicore
         hardware_clocks hardware_pio hardware_vreg hardware_pio

@@ -197,7 +197,7 @@ void init_gpio_pins(void)
 	/* Initialise PIO1 (RTC) */
 	pio_gpio_init(pio1, PIO_RTC_SCLK);
 	pio_gpio_init(pio1, PIO_RTC_IO);
-	pio_gpio_init(pio1, PIO_RTC_CE);
+	pio_gpio_init(pio1, GPIO_RTC_CE);
 
 	/** SPI **/
 	/* Default settings of spi_init are correct for the MB85RS256B. */
@@ -322,12 +322,13 @@ int init_peripherals(void)
 	/* Initialise FRAM and obtain previous save data. */
 
 	/* Initialise GB Bus PIO state machines. */
-	gb_bus_program_init(pio0, PIO_SM_A15, PIO_SM_NCS, PIO_SM_DO);
+	gb_bus_program_init(pio0, PIO_SM_A15, PIO_SM_NCS, PIO_SM_DO, PIO_SM_DI);
 	/* Enable state machines. */
 	pio_sm_set_enabled(pio0, PIO_SM_A15, true);
 	/* PIO_SM_NCS should be enabled when cart RAM access is expected. */
 	pio_sm_set_enabled(pio0, PIO_SM_NCS, false);
 	pio_sm_set_enabled(pio0, PIO_SM_DO,  true);
+	pio_sm_set_enabled(pio0, PIO_SM_DI,  true);
 
 	return 0;
 }
