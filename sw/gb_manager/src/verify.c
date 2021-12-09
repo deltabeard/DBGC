@@ -24,6 +24,7 @@
 #include <hardware/vreg.h>
 
 #include <ds1302.pio.h>
+#include <comms.pio.h>
 #include <generic.h>
 #include <pico/multicore.h>
 #include <hardware/structs/bus_ctrl.h>
@@ -88,6 +89,11 @@ typedef enum {
 } rtc_reg_wr;
 #define RTC_RED_RD_BIT		0x1
 
+typedef enum {
+	GB_POWER_ON = 0,
+	GB_POWER_OFF = 1
+} gb_power_e;
+
 void func_framnuke(const char *cmd)
 {
 	(void) cmd;
@@ -117,21 +123,29 @@ void func_led(const char *cmd)
 
 _Noreturn void core1_play_rom(void)
 {
+	/* NCS state machine is disabled because a ROM only image is being
+	 * played here. */
+	pio_set_sm_mask_enabled(GB_BUS_PIO,
+		1 << PIO_SM_A15 | 0 << PIO_SM_NCS | 1 << PIO_SM_DO |
+		1 << PIO_SM_DI, true);
+	gpio_put(GPIO_GB_RESET, GB_POWER_ON);
+
 	while(1)
 	{
-		io_ro_8 *data_rx = (io_ro_8 *) &pio1->rxf[PIO_SM_DI] + 3;
-		io_wo_8 *data_tx = (io_wo_8 *) &pio1->rxf[PIO_SM_DO] + 3;
-		io_ro_16 *addr_a15 = (io_ro_16 *) &pio1->rxf[PIO_SM_A15] + 1;
-		io_ro_16 *addr_ncs = (io_ro_16 *) &pio1->rxf[PIO_SM_NCS] + 1;
-		
+		//io_ro_8 *data_rx = (io_ro_8 *) &GB_BUS_PIO->rxf[PIO_SM_DI]
+		// + 3;
+		io_wo_8 *data_tx = (io_wo_8 *) &GB_BUS_PIO->rxf[PIO_SM_DO] + 3;
+		io_ro_16 *addr_a15 = (io_ro_16 *) &GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
+		//io_ro_16 *addr_ncs = (io_ro_16 *)
+		//	&GB_BUS_PIO->rxf[PIO_SM_NCS] + 1;
 		uint16_t address;
 
 		/* Wait until we receive a new address. */
-		while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_A15));
+		while(pio_sm_is_rx_fifo_empty(GB_BUS_PIO, PIO_SM_A15));
 
 		/* Only reads are expected in a non-banked ROM. */
-		address = *rx_sm_a15;
-		*tx_sm_do = libbet_gb[address];
+		address = *addr_a15;
+		*data_tx = libbet_gb[address];
 	}
 }
 
@@ -266,8 +280,8 @@ void func_rtcwrite(const char *cmd)
 
 void func_rtcread(const char *cmd)
 {
-	io_wo_32 *rdtx = (io_wo_32 *) &pio1->txf[PIO1_SM_RTC_RD];
-	io_wo_32 *wrtx = (io_wo_32 *) &pio1->txf[PIO1_SM_RTC_WR];
+	// io_wo_32 *rdtx = (io_wo_32 *) &pio1->txf[PIO1_SM_RTC_RD];
+	// io_wo_32 *wrtx = (io_wo_32 *) &pio1->txf[PIO1_SM_RTC_WR];
 
 	(void) cmd;
 
@@ -366,23 +380,37 @@ void func_info(const char *cmd)
 			"  Chip: %d\n"
 			"  ROM: %d\n",
 			chip, rom);
+
+		printf("  Frequencies:\n");
+		for(unsigned i = 0; i < CLK_COUNT; i++)
+		{
+			static const char *clkstr[] = {
+				"GPOUT0", "GPOUT1", "GPOUT2", "GPOUT3",
+				"REF", "SYS", "PERI", "USB", "ADC", "RTC"
+			};
+			printf("    %-6s: %9lu\n", clkstr[i], clock_get_hz(i));
+		}
 	}
 
 	/* Get information on connected FRAM. */
 	{
 		const uint8_t src[1] = { 0b10011111 };
 		uint8_t dst[4];
+		unsigned mem_sz;
 
 		gpio_put(SPI_CSn, 0);
 		spi_write_blocking(spi0, src, sizeof(src));
 		spi_read_blocking(spi0, 0x00, dst, sizeof(dst));
 		gpio_put(SPI_CSn, 1);
 
+		mem_sz = 1 << (dst[2] & 0b11111);
+
 		printf("FRAM:\n"
 			"  Manufacturer: %02X\n"
 			"  Continuation Code: %02X\n"
-			"  Product ID: %02X %02X\n",
-			dst[0], dst[1], dst[2], dst[3]);
+			"  Product ID: %02X %02X\n"
+			"  Size: %u KiB\n",
+			dst[0], dst[1], dst[2], dst[3], mem_sz);
 	}
 }
 
@@ -459,7 +487,7 @@ new_cmd:
 	goto new_cmd;
 }
 
-void init_peripherals(void)
+static inline void init_peripherals(void)
 {
 	/** SIO **/
 	/* Initialise GPIO states. */
@@ -503,17 +531,8 @@ void init_peripherals(void)
 	gpio_disable_pulls(PIO_NCS);
 
 	/** PIO **/
-	/* Initialise PIO0 (GB Bus) */
-	for(uint_fast8_t pin = PIO_PHI; pin <= PIO_M7; pin++)
-	{
-		/* Disable schmitt triggers on GB Bus. The bus transceivers
-		 * already have schmitt triggers. */
-		gpio_set_input_hysteresis_enabled(pin, false);
-		/* Use fast slew rate for GB Bus. */
-		gpio_set_slew_rate(pin, GPIO_SLEW_RATE_FAST);
-		/* Initialise PIO0 pins. */
-		pio_gpio_init(pio0, pin);
-	}
+	gb_bus_program_init(GB_BUS_PIO, PIO_SM_A15, PIO_SM_NCS, PIO_SM_DO,
+		PIO_SM_DI);
 
 #if 0
 	/* Initialise PIO1 (RTC) */
@@ -534,7 +553,24 @@ void init_peripherals(void)
 
 int main(void)
 {
-	set_sys_clock_48mhz();
+	//set_sys_clock_48mhz();
+	clocks_init();
+	/* Unused clocks are stopped. */
+	clock_stop(clk_adc);
+	clock_stop(clk_rtc);
+
+	{
+		/* The value for VCO set here is meant for least power
+		 * consumption. */
+		const unsigned vco = 500000000;
+		const unsigned div1 = 2, div2 = 1;
+
+		vreg_set_voltage(VREG_VOLTAGE_1_15);
+		sleep_ms(4);
+		set_sys_clock_pll(vco, div1, div2);
+		sleep_ms(4);
+	}
+
 	init_peripherals();
 
 	/* If baudrate is set to PICO_STDIO_USB_RESET_MAGIC_BAUD_RATE, then the

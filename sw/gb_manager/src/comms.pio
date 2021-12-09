@@ -139,6 +139,13 @@ read_address_gb_bus:
 
 % c-sdk {
 
+void gb_bus_set_enabled(PIO pio, bool enabled)
+{
+	pio_set_sm_mask_enabled(GB_BUS_PIO,
+        		1 << PIO_SM_A15 | 1 << PIO_SM_NCS | 1 << PIO_SM_DO |
+        		1 << PIO_SM_DI, true);
+}
+
 /**
  * Check if a cart write is being requested by the Game Boy.
  */
@@ -203,9 +210,17 @@ void gb_bus_program_init(PIO pio,
 		pio_sm_set_consecutive_pindirs(pio, sm, PIO_M0, 8, false);
 	}
 
-	/* Allow PIO to set OE and Multiplexed GPIO pins as output. */
-	for(unsigned pin = PIO_ADDR1_OE; pin <= PIO_M7; pin++)
-		pio_gpio_init(pio, pin);
+	/* Initialise GB Bus Pins */
+	for(uint_fast8_t pin = PIO_PHI; pin <= PIO_M7; pin++)
+	{
+		/* Disable schmitt triggers on GB Bus. The bus transceivers
+		 * already have schmitt triggers. */
+		gpio_set_input_hysteresis_enabled(pin, false);
+		/* Use fast slew rate for GB Bus. */
+		gpio_set_slew_rate(pin, GPIO_SLEW_RATE_FAST);
+		/* Initialise PIO0 pins. */
+		pio_gpio_init(GB_BUS_PIO, pin);
+	}
 
 	/* Set "sideset" configuration to allow OE and DATA_DIR to be changed
 	 on each instruction for the state machines. */

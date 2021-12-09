@@ -36,6 +36,7 @@
 #define SPI_SCK			6
 
 // --- PIO0 ---
+#define GB_BUS_PIO		pio0
 #define PIO_PHI			13
 #define PIO_NWR			14
 #define PIO_NRD			15
@@ -54,6 +55,7 @@
 #define PIO_SM_DI		3
 
 // --- PIO1 ---
+#define RTC_BUS_PIO		pio1
 #define PIO_RTC_SCLK		9
 #define PIO_RTC_IO		10
 #define GPIO_RTC_CE		11

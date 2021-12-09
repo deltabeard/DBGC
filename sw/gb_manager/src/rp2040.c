@@ -994,6 +994,8 @@ dbgc_panic(__unused const char *fmt, ...)
 
 bool __no_inline_not_in_flash_func(rtc_callback)(repeating_timer_t *rt)
 {
+	(void) rt;
+
 	/* Skip if RTC is disabled. */
 	if((rtc.rtc_bits.high & 0x40) != 0)
 		goto out;
