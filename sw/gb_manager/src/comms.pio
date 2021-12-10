@@ -40,9 +40,9 @@ sync_gb_bus_start:
 .wrap_target
 	; Wait for new clock cycle of PHI.
 	wait 1 GPIO PHI
-	; Set IRQ 0 on the HIGH edge of PHI. This triggers the other state
+	; Clear IRQ 0 on the HIGH edge of PHI. This triggers the other state
 	; machines to start checking for A15 and CS.
-	irq set 0
+	irq clear 0
 	; Wait for LOW edge of PHI.
 	wait 0 GPIO PHI
 	; Check whether the Game Boy is attempting to write to the cart. If
@@ -99,10 +99,10 @@ read_data_gb_bus_start:
 	; Game Boy.
 	out pins, 8		side SIDE_SET_MULTIPLEXOR_DATAIN
 	; Wait for new clock cycle of PHI. It is expected that the state
-	; machine reading the address clears the IRQ before this line is
+	; machine reading the address sets the IRQ before this line is
 	; reached.
 	; Side: Hold previous state.
-	wait 1 irq 0		side SIDE_SET_MULTIPLEXOR_DATAIN
+	wait 0 irq 0		side SIDE_SET_MULTIPLEXOR_DATAIN
 .wrap
 
 ; End .program read_data_gb_bus
@@ -117,7 +117,7 @@ read_data_gb_bus_start:
 read_address_gb_bus:
 .wrap_target
 	; Wait for new clock cycle of PHI.
-	wait 1 irq 0
+	wait 0 irq 0
 	; If A15 or NCS is LOW, then the Game Boy is sending the cart an
 	; address. The CPU must decide whether this address is within range
 	; or not.
@@ -125,7 +125,10 @@ read_address_gb_bus:
 	; interrupt.
 	; Side: set multiplexor to HIGH byte of address for A15 checking.
 	jmp pin read_address_gb_bus side SIDE_SET_MULTIPLEXOR_HIGHADDR
-	; If we get here, then the address is ready to the read.
+	; If we get here, then the address is ready to be read.
+	; First, set the interrupt.
+	irq set 0
+	; Read in the address.
 	; Read LOW byte of address into ISR.
 	; Side: set multiplexor to LOW byte of address.
         in PINS, 8		side SIDE_SET_MULTIPLEXOR_LOWADDR
@@ -232,6 +235,9 @@ void gb_bus_program_init(PIO pio,
 	sm_config_set_sideset_pins(&sm_config_ncs, PIO_ADDR1_OE);
 	sm_config_set_sideset_pins(&sm_config_do, PIO_ADDR1_OE);
 	sm_config_set_sideset_pins(&sm_config_di, PIO_ADDR1_OE);
+
+	/* IRQ 0 is set on init. */
+	pio_sm_exec_wait_blocking(pio, sm_di, pio_encode_irq_set(false, 0));
 
 	/* Initialise all state machines. */
 	pio_sm_init(pio, sm_a15, read_address_gb_bus_off, &sm_config_a15);
