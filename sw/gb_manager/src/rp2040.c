@@ -29,7 +29,7 @@
 #include <hardware/structs/bus_ctrl.h>
 #include <hardware/structs/xip_ctrl.h>
 
-#include "comms.pio.h"
+#include <comms.pio.h>
 #include <cart.h>
 #include <generic.h>
 
@@ -139,31 +139,32 @@ void gb_power(gb_pwr_e pwr)
 	return;
 }
 
-/**
- * Initialise GPIO pins for this application.
- */
-void init_gpio_pins(void)
+static inline void init_peripherals(void)
 {
 	/** SIO **/
 	/* Initialise GPIO states. */
-	gpio_init_mask(
-		1 << GPIO_LED_GREEN |
-		1 << GPIO_SWITCH | /* Not required for inputs. */
-		1 << GPIO_MOTOR |
-		1 << GPIO_GB_RESET |
-		1 << SPI_CSn);
+	gpio_init_mask(1 << GPIO_LED_GREEN |
+		       1 << GPIO_SWITCH | /* Not required for inputs. */
+		       1 << GPIO_MOTOR |
+		       1 << GPIO_GB_RESET |
+		       1 << SPI_CSn |
+		       1 << PIO_RTC_SCLK |
+		       1 << PIO_RTC_IO |
+		       1 << GPIO_RTC_CE);
 	/* Set GPIO pin directions. */
-	gpio_set_dir_out_masked(
-		1 << GPIO_LED_GREEN |
-		1 << GPIO_MOTOR |
-		1 << GPIO_GB_RESET |
-		1 << SPI_CSn);
+	gpio_set_dir_out_masked(1 << GPIO_LED_GREEN |
+				1 << GPIO_MOTOR |
+				1 << GPIO_GB_RESET |
+				1 << SPI_CSn |
+				1 << PIO_RTC_SCLK |
+				1 << GPIO_RTC_CE);
 	/* Set initial output state. */
-	gpio_set_mask(
-		0 << GPIO_LED_GREEN |
-		0 << GPIO_MOTOR |
-		1 << GPIO_GB_RESET | /* Hold GB in reset. */
-		1 << SPI_CSn);
+	gpio_set_mask(0 << GPIO_LED_GREEN |
+		      0 << GPIO_MOTOR |
+		      1 << GPIO_GB_RESET | /* Hold GB in reset. */
+		      1 << SPI_CSn |
+		      0 << PIO_RTC_SCLK |
+		      0 << GPIO_RTC_CE);
 
 	/* Set pulls. */
 	gpio_disable_pulls(GPIO_LED_GREEN);
@@ -182,22 +183,17 @@ void init_gpio_pins(void)
 	gpio_disable_pulls(PIO_NCS);
 
 	/** PIO **/
-	/* Initialise PIO0 (GB Bus) */
-	for(uint_fast8_t pin = PIO_PHI; pin <= PIO_M7; pin++)
-	{
-		/* Disable schmitt triggers on GB Bus. The bus transceivers
-		 * already have schmitt triggers. */
-		gpio_set_input_hysteresis_enabled(pin, false);
-		/* Use fast slew rate for GB Bus. */
-		gpio_set_slew_rate(pin, GPIO_SLEW_RATE_FAST);
-		/* Initialise PIO0 pins. */
-		pio_gpio_init(pio0, pin);
-	}
+	gb_bus_program_init(GB_BUS_PIO, PIO_SM_A15, PIO_SM_NCS, PIO_SM_DO,
+		PIO_SM_DI);
 
+#if 0
 	/* Initialise PIO1 (RTC) */
-	pio_gpio_init(pio1, PIO_RTC_SCLK);
-	pio_gpio_init(pio1, PIO_RTC_IO);
-	pio_gpio_init(pio1, GPIO_RTC_CE);
+	ds1302_program_init(pio1, PIO1_SM_RTC_WR, PIO1_SM_RTC_RD);
+	/* Enable state machines. */
+	pio_sm_set_enabled(pio1, PIO1_SM_RTC_WR, true);
+	/* PIO_SM_NCS should be enabled when cart RAM access is expected. */
+	pio_sm_set_enabled(pio1, PIO1_SM_RTC_RD, true);
+#endif
 
 	/** SPI **/
 	/* Default settings of spi_init are correct for the MB85RS256B. */
@@ -1051,7 +1047,6 @@ int main(void)
 		set_sys_clock_pll(vco, div1, div2);
 		sleep_ms(4);
 	}
-
 	init_gpio_pins();
 	init_peripherals();
 

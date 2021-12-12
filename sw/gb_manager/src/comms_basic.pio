@@ -1,0 +1,138 @@
+; SM83/8080 bus communication for the Nintendo Game Boy.
+; Copyright (c) 2021 Mahyar Koshkouei
+;
+; Redistribution and use in source and binary forms, with or without
+; modification, are permitted, provided that the above copyright notice and
+; this permission notice appear in all copies.
+; THIS SOFTWARE IS PROVIDED 'AS-IS', WITHOUT ANY EXPRESS OR IMPLIED WARRANTY.
+; IN NO EVENT WILL THE AUTHORS BE HELD LIABLE FOR ANY DAMAGES ARISING FROM
+; THE USE OF THIS SOFTWARE.
+;
+
+.define PHI		13
+.define NWR		14
+.define NRD		15
+.define NCS		16
+.define ADDR1_OE	17
+.define ADDR2_OE	18
+.define DATA_OE		19
+.define DATA_DIR	20
+.define M0		21
+.define M7		28
+
+.define SIDE_SET_ADDR1_nOE_BIT		0
+.define SIDE_SET_ADDR2_nOE_BIT		1
+.define SIDE_SET_DATA_nOE_BIT		2
+.define SIDE_SET_DATA_DIR_BIT		3
+.define SIDE_SET_MULTIPLEXOR_LOWADDR	0b1110
+.define SIDE_SET_MULTIPLEXOR_HIGHADDR	0b1101
+; Set multiplexor to write data from the RP2040 to the Game Boy.
+.define SIDE_SET_MULTIPLEXOR_RP2040OUT	0b1011
+; Set multiplexor to read data from the Game Boy to the RP2040.
+.define SIDE_SET_MULTIPLEXOR_RP2040IN	0b0011
+
+; Reads address from the Game Boy.
+.program read_a15_gb_bus
+
+; JMP pin must be set to either A15 (M7) or NCS.
+
+read_a15_gb_bus:
+.wrap_target
+	set pins, SIDE_SET_MULTIPLEXOR_HIGHADDR				[2]
+	; Wait for new address.
+        wait 0 GPIO M7
+	; Read in the address.
+	; Read LOW byte of address into ISR.
+	; Side: set multiplexor to LOW byte of address.
+	set pins, SIDE_SET_MULTIPLEXOR_LOWADDR				[2]
+        in pins, 8
+        ; Read HIGH byte of address into ISR.
+        ; Side: set multiplexor to HIGH byte of address.
+        set pins, SIDE_SET_MULTIPLEXOR_HIGHADDR				[2]
+        in pins, 8
+
+        ; Pull data from TX FIFO to OSR
+        set pins, SIDE_SET_MULTIPLEXOR_RP2040OUT
+        mov osr, ~null
+        out pindirs, 8
+
+        pull ifempty block
+        out PINS, 8
+
+        mov osr, null
+
+	; Wait for next address.
+	wait 0 GPIO PHI
+        wait 1 GPIO PHI
+
+	out pindirs, 8
+.wrap
+
+; End .program read_a15_gb_bus
+
+
+% c-sdk {
+
+#define SIDE_SET_INIT 0b1101
+
+/**
+ * Initiliase Game Boy bus communication with PIO.
+ */
+void gb_bus_program_basic_init(PIO pio, unsigned sm_a15)
+{
+	pio_sm_config sm_config_a15;
+	uint read_a15_gb_bus_off;
+
+	read_a15_gb_bus_off = pio_add_program(pio, &read_a15_gb_bus_program);
+	sm_config_a15 = read_a15_gb_bus_program_get_default_config(read_a15_gb_bus_off);
+
+	/* Configure SM_A15, and SM_CS. */
+	/* Setting the "IN" pins on "gb_bus_get_address" state machines. */
+	/* Set the first "IN" pin on the state machines to the first address pin. */
+	sm_config_set_in_pins(&sm_config_a15, PIO_M0);
+	/* Configure "OUT" pins to the data bus. */
+	sm_config_set_out_pins(&sm_config_a15, PIO_M0, 8);
+
+	/* Configure "JMP" pins. */
+	sm_config_set_jmp_pin(&sm_config_a15, PIO_M7);
+
+	/* Set number of bits in RX FIFO. */
+	/* TODO: This may only be required for autopush functionality. */
+	sm_config_set_in_shift(&sm_config_a15, true, true, 16);
+	/* Set number of bits in TX FIFO. */
+	sm_config_set_out_shift(&sm_config_a15, true, false, 8);
+
+	/* Set clock speed of PIO state machines. */
+	sm_config_set_clkdiv_int_frac(&sm_config_a15, 2, 0);
+
+	/* Set initial pin directions for all state machines. */
+	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_PHI, 4, false);
+        pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_ADDR1_OE, 4, true);
+        pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_M0, 8, false);
+
+	/* Initialise GB Bus Pins */
+	for(uint_fast8_t pin = PIO_PHI; pin <= PIO_M7; pin++)
+	{
+		/* Disable schmitt triggers on GB Bus. The bus transceivers
+		 * already have schmitt triggers. */
+		gpio_set_input_hysteresis_enabled(pin, false);
+		/* Use fast slew rate for GB Bus. */
+		gpio_set_slew_rate(pin, GPIO_SLEW_RATE_FAST);
+		/* Initialise PIO0 pins. */
+		pio_gpio_init(pio, pin);
+	}
+
+	/* Set "sideset" configuration to allow OE and DATA_DIR to be changed
+	 on each instruction for the state machines. */
+	//sm_config_set_sideset(&sm_config_a15, 4, false, false);
+	//sm_config_set_sideset_pins(&sm_config_a15, PIO_ADDR1_OE);
+	//pio_sm_exec(pio, sm_a15, pio_encode_nop() |
+	//	pio_encode_sideset(4, SIDE_SET_INIT));
+
+	/* Use SET to set the multiplexor state. */
+	sm_config_set_set_pins(&sm_config_a15, PIO_ADDR1_OE, 4);
+
+	/* Initialise all state machines. */
+	pio_sm_init(pio, sm_a15, read_a15_gb_bus_off, &sm_config_a15);
+}
+%}

@@ -24,7 +24,8 @@
 #include <hardware/vreg.h>
 
 #include <ds1302.pio.h>
-#include <comms.pio.h>
+//#include <comms.pio.h>
+#include <comms_basic.pio.h>
 #include <generic.h>
 #include <pico/multicore.h>
 #include <hardware/structs/bus_ctrl.h>
@@ -155,7 +156,8 @@ void func_play(const char *cmd)
 
 	(void) cmd;
 
-	if(already_playing == false)
+#if 0
+	if(already_playing == true)
 	{
 		puts("Already playing");
 		return;
@@ -167,6 +169,38 @@ void func_play(const char *cmd)
 	bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_PROC1_BITS;
 
 	multicore_launch_core1(core1_play_rom);
+#elif 1
+	if(already_playing == false)
+	{
+		gb_bus_program_basic_init(GB_BUS_PIO, PIO_SM_A15);
+		pio_sm_set_enabled(GB_BUS_PIO, PIO_SM_A15, true);
+		puts("SM Init");
+	}
+
+	already_playing = true;
+	gpio_put(GPIO_GB_RESET, GB_POWER_ON);
+	puts("Power on");
+	(void)save_and_disable_interrupts();
+
+	while(1)
+	{
+		io_wo_8 *data_tx =
+			(io_wo_8 *) &GB_BUS_PIO->txf[PIO_SM_A15] + 3;
+		io_ro_16 *addr_a15 = (io_ro_16 *)
+			&GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
+
+		if(pio_sm_is_rx_fifo_empty(GB_BUS_PIO, PIO_SM_A15) == false)
+		{
+			uint16_t address = *addr_a15;
+			uint8_t data = libbet_gb[address];
+			*data_tx = data;
+			//printf("%04X %02X\n", address, data);
+		}
+	}
+#else
+	gpio_put(GPIO_GB_RESET, GB_POWER_ON);
+#endif
+
 }
 
 inline uint8_t bcd_to_int(uint8_t x)
@@ -531,8 +565,6 @@ static inline void init_peripherals(void)
 	gpio_disable_pulls(PIO_NCS);
 
 	/** PIO **/
-	gb_bus_program_init(GB_BUS_PIO, PIO_SM_A15, PIO_SM_NCS, PIO_SM_DO,
-		PIO_SM_DI);
 
 #if 0
 	/* Initialise PIO1 (RTC) */
@@ -553,11 +585,10 @@ static inline void init_peripherals(void)
 
 int main(void)
 {
-	//set_sys_clock_48mhz();
 	clocks_init();
 	/* Unused clocks are stopped. */
-	clock_stop(clk_adc);
-	clock_stop(clk_rtc);
+	//clock_stop(clk_adc);
+	//clock_stop(clk_rtc);
 
 	{
 		/* The value for VCO set here is meant for least power
