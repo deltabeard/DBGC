@@ -172,27 +172,32 @@ void func_play(const char *cmd)
 #elif 1
 	if(already_playing == false)
 	{
-		gb_bus_program_basic_init(GB_BUS_PIO, PIO_SM_A15);
+		gb_bus_program_basic_init(GB_BUS_PIO, PIO_SM_A15, PIO_SM_DO);
 		pio_sm_set_enabled(GB_BUS_PIO, PIO_SM_A15, true);
+		pio_sm_set_enabled(GB_BUS_PIO, PIO_SM_DO, true);
 		puts("SM Init");
 	}
 
 	already_playing = true;
 	gpio_put(GPIO_GB_RESET, GB_POWER_ON);
 	puts("Power on");
-	(void)save_and_disable_interrupts();
+	(void) save_and_disable_interrupts();
 
 	while(1)
 	{
 		io_wo_8 *data_tx =
-			(io_wo_8 *) &GB_BUS_PIO->txf[PIO_SM_A15] + 3;
+			(io_wo_8 *) &GB_BUS_PIO->txf[PIO_SM_DO] + 3;
 		io_ro_16 *addr_a15 = (io_ro_16 *)
 			&GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
 
 		if(pio_sm_is_rx_fifo_empty(GB_BUS_PIO, PIO_SM_A15) == false)
 		{
-			uint16_t address = *addr_a15;
-			uint8_t data = libbet_gb[address];
+			uint16_t address;
+			uint8_t data;
+
+			address = *addr_a15;
+			address = __builtin_bswap16(address);
+			data = libbet_gb[address];
 			*data_tx = data;
 			//printf("%04X %02X\n", address, data);
 		}
@@ -593,7 +598,7 @@ int main(void)
 	{
 		/* The value for VCO set here is meant for least power
 		 * consumption. */
-		const unsigned vco = 500000000;
+		const unsigned vco = 512000000;
 		const unsigned div1 = 2, div2 = 1;
 
 		vreg_set_voltage(VREG_VOLTAGE_1_15);

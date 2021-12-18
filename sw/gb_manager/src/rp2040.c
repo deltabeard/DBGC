@@ -230,105 +230,6 @@ uint_fast16_t get_day_num(uint8_t year, uint8_t month, uint8_t day)
 	return days;
 }
 
-#if 0
-/**
- * Initialise the I2C peripherals. This also reads save data from the FRAM.
- * \return	PICO_ERROR_GENERIC on error or bytes written.
- */
-int init_i2c_peripherals(void)
-{
-	int ret = 0;
-
-	/* Initialise I2C. */
-	UNUSED_RET i2c_init(i2c_default, 400 * 1000);
-
-	/* Set external IO expander configuration. */
-	{
-		uint8_t tx[2];
-		tx[0] = IO_EXP_DIRECTION;
-		tx[1] = 0b11111010;
-		ret = i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, tx,
-			sizeof(tx), false);
-
-		if(ret == PICO_ERROR_GENERIC)
-			goto out;
-
-		/* Set to input address for future button polling. */
-		tx[0] = IO_EXP_INPUT_PORT;
-		UNUSED_RET i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR,
-			&tx[0], 1, false);
-	}
-
-	/* Read time from RTC. */
-	{
-		uint8_t tx = RTC_SEC;
-		uint8_t rx[RTC_YEAR + 1];
-		uint_fast16_t days;
-
-		/* Select second register. */
-		ret = i2c_write_blocking(i2c_default, I2C_DS3231M_ADDR, &tx, 1, false);
-		if(ret == PICO_ERROR_GENERIC)
-			goto out;
-
-		/* Read time values. */
-		ret = i2c_read_blocking(i2c_default, I2C_DS3231M_ADDR, rx, sizeof(rx), false);
-		if(ret == PICO_ERROR_GENERIC)
-			goto out;
-
-
-		days = get_day_num(bcd_to_int(rx[RTC_YEAR]),
-			bcd_to_int(rx[RTC_MONTH]), bcd_to_int(rx[RTC_DAY]));
-
-		rtc.rtc_bits.sec = bcd_to_int(rx[RTC_SEC]);
-		rtc.rtc_bits.min = bcd_to_int(rx[RTC_MIN]);
-		rtc.rtc_bits.hour = bcd_to_int(rx[RTC_HOUR]);
-		rtc.rtc_bits.yday = days & 0xFF;
-		if(days > 0xFF)
-			rtc.rtc_bits.high |= 0x01;
-	}
-
-	/* Read save data from FRAM. */
-	{
-		uint8_t tx[2];
-
-		/* Set read address to 0x0000. */
-		tx[0] = 0x00;
-		tx[1] = 0x00;
-		ret = i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, tx,
-			sizeof(tx), true);
-
-		if(ret == PICO_ERROR_GENERIC)
-			goto out;
-
-		UNUSED_RET i2c_read_blocking(i2c_default,
-			I2C_MB85RC256V_ADDR, ram, sizeof(i2c_ram)-2, false);
-	}
-
-	/* TODO: RTC is ignored here. */
-
-out:
-	return ret;
-}
-#endif
-
-int init_peripherals(void)
-{
-	/* Initialise RTC. */
-
-	/* Initialise FRAM and obtain previous save data. */
-
-	/* Initialise GB Bus PIO state machines. */
-	gb_bus_program_init(pio0, PIO_SM_A15, PIO_SM_NCS, PIO_SM_DO, PIO_SM_DI);
-	/* Enable state machines. */
-	pio_sm_set_enabled(pio0, PIO_SM_A15, true);
-	/* PIO_SM_NCS should be enabled when cart RAM access is expected. */
-	pio_sm_set_enabled(pio0, PIO_SM_NCS, false);
-	pio_sm_set_enabled(pio0, PIO_SM_DO,  true);
-	pio_sm_set_enabled(pio0, PIO_SM_DI,  true);
-
-	return 0;
-}
-
 _Noreturn void __not_in_flash_func(play_rom_only)(const uint8_t *rom)
 {
 	while(1)
@@ -875,97 +776,14 @@ void core1_main(void)
 #endif
 }
 
-#if 0
-void i2cDMA(i2c_inst_t *i2c, unsigned count, uint8_t *buf)
-{
-	const int dma_write = 1;
-	dma_channel_config c_write;
-
-	// configure write DMA
-	c_write = dma_channel_get_default_config(dma_write);
-	channel_config_set_transfer_data_size(&c_write, DMA_SIZE_8);
-	channel_config_set_read_increment(&c_write, false);
-	channel_config_set_write_increment(&c_write, false);
-	channel_config_set_dreq(&c_write, DREQ_I2C0_TX);
-
-	dma_channel_configure(dma_write, &c_write,
-		&i2c->hw->data_cmd,	/* Destination pointer */
-		buf,			/* Source pointer */
-		count,			/* Number of transfers */
-		true);
-
-	//dma_channel_start(dma_write);
-}
-#endif
-
-static ALWAYS_INLINE void busy_wait_us_31(uint32_t delay_us)
-{
-	// we only allow 31 bits
-	uint32_t start = timer_hw->timerawl;
-	while (timer_hw->timerawl - start < delay_us)
-		tight_loop_contents();
-}
-
 _Noreturn void __no_inline_not_in_flash_func(loop_forever)(uint32_t ram_sz)
 {
-	/* If this game has no save data (does not use cart RAM) then sleep this
-	 * core forever to save power. */
-
-	if(ram_sz == 0)
-	{
-		/* Sleep forever. */
-		__asm volatile ("cpsid i");
-		while(1)
-			__wfi();
-
-		UNREACHABLE();
-	}
-
+	/* Sleep forever. */
+	__asm volatile ("cpsid i");
 	while(1)
-	{
-#if 0
-		uint8_t conf = IO_EXP_INPUT_PORT;
-		uint8_t rx;
+		__wfi();
 
-		//sleep_ms(16);
-		i2c_write_blocking(i2c_default, I2C_PCA9536_ADDR, &conf,
-			sizeof(conf), false);
-		i2c_read_blocking(i2c_default, I2C_PCA9536_ADDR, &rx,
-			sizeof(rx), false);
-
-		/* If button is pressed, save and power off. */
-		if((rx & 0b0010))
-			continue;
-
-		i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
-			ram_sz + 2, false);
-
-		/* The Game Boy powers off to signify that saving was
-		 * successful.
-		 * TODO: This should be changed to an LED blinking. */
-		gb_power(GB_POWER_OFF);
-		while(i2c_default->hw->txflr != 0);
-		while(1)
-			__wfi();
-		//sleep_ms(512);
-		//gb_power(GB_POWER_ON);
-#elif 1
-
-		/* Save to FRAM every 1ms.
-		 * Where each byte has an endurance of 10^12 writes, the FRAM
-		 * is expected to last for at least 1902 years. */
-		//busy_wait_us_31(1*1024);
-
-		sleep_us(2 * 1024);
-
-		if(__atomic_load_n(&ram_write, __ATOMIC_SEQ_CST) == 0)
-			continue;
-
-		__atomic_store_n(&ram_write, 0, __ATOMIC_SEQ_CST);
-		//i2c_write_blocking(i2c_default, I2C_MB85RC256V_ADDR, i2c_ram,
-		//	ram_sz + 2, false);
-#endif
-	}
+	UNREACHABLE();
 }
 
 void begin_playing(void)
@@ -1047,7 +865,7 @@ int main(void)
 		set_sys_clock_pll(vco, div1, div2);
 		sleep_ms(4);
 	}
-	init_gpio_pins();
+
 	init_peripherals();
 
 	/* After initialising the IO expander, ensure that the Game Boy is held
