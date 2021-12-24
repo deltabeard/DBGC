@@ -81,27 +81,27 @@ write_data_gb_bus:
 	irq set IRQ_CONTROL_MULTIPLEXOR
 
 	; Set the multiplexor to output to the data bus.
-        set pins, SIDE_SET_MULTIPLEXOR_RP2040OUT
+	set pins, SIDE_SET_MULTIPLEXOR_RP2040OUT
 
-        ; Put date byte to the multiplexor. This must be done before multiplexor
-        ; pin directions are changed, becuase that disrupts the OSR.
-        out PINS, 8
+	; Put date byte to the multiplexor. This must be done before multiplexor
+	; pin directions are changed, becuase that disrupts the OSR.
+	out PINS, 8
 
-        ; Set multiplexor pin directions to output.
+	; Set multiplexor pin directions to output.
 	mov osr, ~null
-        out pindirs, 8
+	out pindirs, 8
 
-        ; Prepare OSR for pin direction setting later.
-        mov osr, null
+	; Prepare OSR for pin direction setting later.
+	mov osr, null
 
-        ; Hold data until the end of clock cycle.
-        wait 0 GPIO PHI
-        wait 1 GPIO PHI
+	; Hold data until the end of clock cycle.
+	wait 0 GPIO PHI
+	wait 1 GPIO PHI
 
-        ; Set multiplexor pin directions to input (the default state).
-        out pindirs, 8
-        ; Allow other state machines to take control of the multiplexor.
-        irq clear IRQ_CONTROL_MULTIPLEXOR
+	; Set multiplexor pin directions to input (the default state).
+	out pindirs, 8
+	; Allow other state machines to take control of the multiplexor.
+	irq clear IRQ_CONTROL_MULTIPLEXOR
 .wrap
 ; End .program write_data_gb_bus
 
@@ -120,16 +120,16 @@ read_data_gb_bus:
 	irq set IRQ_CONTROL_MULTIPLEXOR
 
 	; Set the multiplexor to read from the data bus.
-        set pins, SIDE_SET_MULTIPLEXOR_RP2040IN				[2]
-        ; Read in data.
-        in pins, 8
+	set pins, SIDE_SET_MULTIPLEXOR_RP2040IN				[2]
+	; Read in data.
+	in pins, 8
 
 	; Wait for the Game Boy to end its write request. Not required, but
 	; stops the other state machines from checking pins.
 	wait 1 GPIO NWR
 
-        ; Allow other state machines to take control of the multiplexor.
-        irq clear IRQ_CONTROL_MULTIPLEXOR
+	; Allow other state machines to take control of the multiplexor.
+	irq clear IRQ_CONTROL_MULTIPLEXOR
 .wrap
 ; End .program write_data_gb_bus
 
@@ -175,8 +175,8 @@ void gb_bus_program_basic_init(PIO pio, unsigned sm_a15, unsigned sm_wd)
 	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_ADDR1_OE, 4, true);
 	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_M0, 8, false);
 	pio_sm_set_consecutive_pindirs(pio, sm_wd, PIO_PHI, 4, false);
-        pio_sm_set_consecutive_pindirs(pio, sm_wd, PIO_ADDR1_OE, 4, true);
-        pio_sm_set_consecutive_pindirs(pio, sm_wd, PIO_M0, 8, false);
+	pio_sm_set_consecutive_pindirs(pio, sm_wd, PIO_ADDR1_OE, 4, true);
+	pio_sm_set_consecutive_pindirs(pio, sm_wd, PIO_M0, 8, false);
 
 	/* Initialise GB Bus Pins */
 	for(uint_fast8_t pin = PIO_PHI; pin <= PIO_M7; pin++)

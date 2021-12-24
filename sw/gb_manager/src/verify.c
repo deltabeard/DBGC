@@ -19,6 +19,7 @@
 #include <pico/binary_info.h>
 #include <hardware/spi.h>
 #include <hardware/pio.h>
+#include <hardware/irq.h>
 #include <hardware/clocks.h>
 #include <hardware/sync.h>
 #include <hardware/vreg.h>
@@ -46,7 +47,6 @@ void func_rtcwrite(const char *cmd);
 void func_gb(const char *cmd);
 void func_framdump(const char *cmd);
 void func_framnuke(const char *cmd);
-void func_play(const char *cmd);
 void func_led(const char *cmd);
 void func_info(const char *cmd);
 void func_btn(const char *cmd);
@@ -66,7 +66,6 @@ static const struct func_map map[] = {
 	{ "BTN",	"Get button status",			func_btn	},
 	{ "GB",		"Turn GB on (0) or off (1)\n"
 			       "\t'GB 1'",			func_gb		},
-	{ "PLAY",	"Play a test ROM on the Game Boy",	func_play	},
 	{ "REBOOT",	"Reboot to USBBOOT",			func_reboot 	}
 };
 
@@ -94,6 +93,26 @@ typedef enum {
 	GB_POWER_ON = 0,
 	GB_POWER_OFF = 1
 } gb_power_e;
+
+static void pio_a15_irq(void)
+{
+	io_wo_8 *data_tx = (io_wo_8 *) &GB_BUS_PIO->txf[PIO_SM_DO] + 3;
+	io_ro_16 *addr_a15 = (io_ro_16 *)
+				     &GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
+	uint16_t address;
+	uint8_t data;
+
+	/* Ignore if cart write is being requested. */
+	if(gpio_get(PIO_NRD) == true)
+		return;
+
+	address = *addr_a15;
+	address = __builtin_bswap16(address);
+	data = libbet_gb[address];
+	*data_tx = data;
+
+	return;
+}
 
 void func_framnuke(const char *cmd)
 {
@@ -124,88 +143,23 @@ void func_led(const char *cmd)
 
 _Noreturn void core1_play_rom(void)
 {
+	gb_bus_program_basic_init(GB_BUS_PIO, PIO_SM_A15, PIO_SM_DO);
+
+	pio_set_irq0_source_enabled(GB_BUS_PIO, pis_sm0_rx_fifo_not_empty, true);
+	irq_set_exclusive_handler(PIO0_IRQ_0, pio_a15_irq);
+	irq_set_enabled(PIO0_IRQ_0, true);
+
 	/* NCS state machine is disabled because a ROM only image is being
 	 * played here. */
 	pio_set_sm_mask_enabled(GB_BUS_PIO,
 		1 << PIO_SM_A15 | 0 << PIO_SM_NCS | 1 << PIO_SM_DO |
-		1 << PIO_SM_DI, true);
+		0 << PIO_SM_DI, true);
 	gpio_put(GPIO_GB_RESET, GB_POWER_ON);
 
 	while(1)
 	{
-		//io_ro_8 *data_rx = (io_ro_8 *) &GB_BUS_PIO->rxf[PIO_SM_DI]
-		// + 3;
-		io_wo_8 *data_tx = (io_wo_8 *) &GB_BUS_PIO->rxf[PIO_SM_DO] + 3;
-		io_ro_16 *addr_a15 = (io_ro_16 *) &GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
-		//io_ro_16 *addr_ncs = (io_ro_16 *)
-		//	&GB_BUS_PIO->rxf[PIO_SM_NCS] + 1;
-		uint16_t address;
-
-		/* Wait until we receive a new address. */
-		while(pio_sm_is_rx_fifo_empty(GB_BUS_PIO, PIO_SM_A15));
-
-		/* Only reads are expected in a non-banked ROM. */
-		address = *addr_a15;
-		*data_tx = libbet_gb[address];
+		__wfi();
 	}
-}
-
-void func_play(const char *cmd)
-{
-	static bool already_playing = false;
-
-	(void) cmd;
-
-#if 0
-	if(already_playing == true)
-	{
-		puts("Already playing");
-		return;
-	}
-
-	already_playing = true;
-
-	/* Grant high bus priority to the second core. */
-	bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_PROC1_BITS;
-
-	multicore_launch_core1(core1_play_rom);
-#elif 1
-	if(already_playing == false)
-	{
-		gb_bus_program_basic_init(GB_BUS_PIO, PIO_SM_A15, PIO_SM_DO);
-		pio_sm_set_enabled(GB_BUS_PIO, PIO_SM_A15, true);
-		pio_sm_set_enabled(GB_BUS_PIO, PIO_SM_DO, true);
-		puts("SM Init");
-	}
-
-	already_playing = true;
-	gpio_put(GPIO_GB_RESET, GB_POWER_ON);
-	puts("Power on");
-	(void) save_and_disable_interrupts();
-
-	while(1)
-	{
-		io_wo_8 *data_tx =
-			(io_wo_8 *) &GB_BUS_PIO->txf[PIO_SM_DO] + 3;
-		io_ro_16 *addr_a15 = (io_ro_16 *)
-			&GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
-
-		if(pio_sm_is_rx_fifo_empty(GB_BUS_PIO, PIO_SM_A15) == false)
-		{
-			uint16_t address;
-			uint8_t data;
-
-			address = *addr_a15;
-			address = __builtin_bswap16(address);
-			data = libbet_gb[address];
-			*data_tx = data;
-			//printf("%04X %02X\n", address, data);
-		}
-	}
-#else
-	gpio_put(GPIO_GB_RESET, GB_POWER_ON);
-#endif
-
 }
 
 inline uint8_t bcd_to_int(uint8_t x)
@@ -476,7 +430,7 @@ _Noreturn void __no_inline_not_in_flash_func(usb_commander)(void)
 
 new_cmd:
 	/* Reduce power consumption. */
-	sleep_ms(1);
+	__wfi();
 
 	printf("CMD> ");
 	for(unsigned i = 0; i < sizeof(buf); i++)
@@ -591,9 +545,6 @@ static inline void init_peripherals(void)
 int main(void)
 {
 	clocks_init();
-	/* Unused clocks are stopped. */
-	//clock_stop(clk_adc);
-	//clock_stop(clk_rtc);
 
 	{
 		/* The value for VCO set here is meant for least power
@@ -602,12 +553,19 @@ int main(void)
 		const unsigned div1 = 2, div2 = 1;
 
 		vreg_set_voltage(VREG_VOLTAGE_1_15);
-		sleep_ms(4);
+		sleep_ms(1);
 		set_sys_clock_pll(vco, div1, div2);
-		sleep_ms(4);
+		sleep_ms(1);
+		/* Unused clocks are stopped. */
+		clock_stop(clk_adc);
+		clock_stop(clk_rtc);
 	}
 
 	init_peripherals();
+
+	/* Grant high bus priority to the second core. */
+	bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_PROC1_BITS;
+	multicore_launch_core1(core1_play_rom);
 
 	/* If baudrate is set to PICO_STDIO_USB_RESET_MAGIC_BAUD_RATE, then the
 	 * RP2040 will reset to BOOTSEL mode. */

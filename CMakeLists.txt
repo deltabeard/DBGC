@@ -4,7 +4,7 @@ cmake_minimum_required(VERSION 3.13)
 include(pico_sdk_import.cmake)
 
 project(DBGC
-        VERSION 0.3.0.0
+        VERSION 0.4.0.0
         DESCRIPTION "Game Boy Cart using the RP2040 microcontroller"
         HOMEPAGE_URL "https://github.com/deltabeard/DBGC"
         LANGUAGES C CXX)
@@ -14,47 +14,47 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-# Creating target for the Game Boy ROM Manager.
-if(NOT DEFINED ENV{GBDK_SDK_DIR})
-    message(FATAL_ERROR "GBDK_SDK_DIR was not defined")
-endif()
-
-if(NOT DEFINED ENV{GBDK_C_COMPILER})
-    set(ENV{GBDK_C_COMPILER} "$ENV{GBDK_SDK_DIR}/bin/lcc")
-endif()
-
-set(GBDK_LINKER_OPTIONS -Wa-l -Wl-m -Wl-j -Wm-p -Wm-ynGBMGR -Wl-yt0)
-add_custom_target(gb_manager ALL
-        DEPENDS ${DBGC_BINARY_DIR}/gb_manager.gb
-                ${DBGC_BINARY_DIR}/gb_manager.asm
-                ${DBGC_BINARY_DIR}/gb_manager.gb.h
-        SOURCES sw/gb_manager/src/gb.c)
-add_custom_command(OUTPUT gb_manager.gb
-        COMMAND $ENV{GBDK_C_COMPILER}
-        ARGS ${GBDK_LINKER_OPTIONS} -I$ENV{GBDK_SDK_DIR}/include
-        -Isw/gb_manager/inc
-        -o ${DBGC_BINARY_DIR}/gb_manager.gb sw/gb_manager/src/gb.c
-        DEPENDS sw/gb_manager/src/gb.c
-        WORKING_DIRECTORY ${DBGC_SOURCE_DIR}
-        COMMENT "Compiling GB Manager to ROM")
-add_custom_command(OUTPUT gb_manager.asm
-        COMMAND $ENV{GBDK_C_COMPILER}
-        ARGS -S ${GBDK_LINKER_OPTIONS} -I$ENV{GBDK_SDK_DIR}/include
-        -Isw/gb_manager/inc
-        -o ${DBGC_BINARY_DIR}/gb_manager.asm sw/gb_manager/src/gb.c
-        DEPENDS sw/gb_manager/src/gb.c
-        WORKING_DIRECTORY ${DBGC_SOURCE_DIR}
-        COMMENT "Compiling GB Manager to assembly")
-add_custom_command(OUTPUT gb_manager.gb.h
-        PRE_BUILD
-        COMMAND ${CMAKE_COMMAND}
-            -DSOURCE_FILE="${DBGC_BINARY_DIR}/gb_manager.gb"
-            -DOUTPUT_FILE="${DBGC_BINARY_DIR}/gb_manager.gb.h"
-            -DVARIABLE_NAME="gb_manager_rom"
-            -P ${CMAKE_SOURCE_DIR}/gb2header.cmake
-        DEPENDS ${DBGC_BINARY_DIR}/gb_manager.gb
-        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        COMMENT "Converting GB ROM to header file")
+## Creating target for the Game Boy ROM Manager.
+#if(NOT DEFINED ENV{GBDK_SDK_DIR})
+#    message(FATAL_ERROR "GBDK_SDK_DIR was not defined")
+#endif()
+#
+#if(NOT DEFINED ENV{GBDK_C_COMPILER})
+#    set(ENV{GBDK_C_COMPILER} "$ENV{GBDK_SDK_DIR}/bin/lcc")
+#endif()
+#
+#set(GBDK_LINKER_OPTIONS -Wa-l -Wl-m -Wl-j -Wm-p -Wm-ynGBMGR -Wl-yt0)
+#add_custom_target(gb_manager ALL
+#        DEPENDS ${DBGC_BINARY_DIR}/gb_manager.gb
+#                ${DBGC_BINARY_DIR}/gb_manager.asm
+#                ${DBGC_BINARY_DIR}/gb_manager.gb.h
+#        SOURCES sw/gb_manager/src/gb.c)
+#add_custom_command(OUTPUT gb_manager.gb
+#        COMMAND $ENV{GBDK_C_COMPILER}
+#        ARGS ${GBDK_LINKER_OPTIONS} -I$ENV{GBDK_SDK_DIR}/include
+#        -Isw/gb_manager/inc
+#        -o ${DBGC_BINARY_DIR}/gb_manager.gb sw/gb_manager/src/gb.c
+#        DEPENDS sw/gb_manager/src/gb.c
+#        WORKING_DIRECTORY ${DBGC_SOURCE_DIR}
+#        COMMENT "Compiling GB Manager to ROM")
+#add_custom_command(OUTPUT gb_manager.asm
+#        COMMAND $ENV{GBDK_C_COMPILER}
+#        ARGS -S ${GBDK_LINKER_OPTIONS} -I$ENV{GBDK_SDK_DIR}/include
+#        -Isw/gb_manager/inc
+#        -o ${DBGC_BINARY_DIR}/gb_manager.asm sw/gb_manager/src/gb.c
+#        DEPENDS sw/gb_manager/src/gb.c
+#        WORKING_DIRECTORY ${DBGC_SOURCE_DIR}
+#        COMMENT "Compiling GB Manager to assembly")
+#add_custom_command(OUTPUT gb_manager.gb.h
+#        PRE_BUILD
+#        COMMAND ${CMAKE_COMMAND}
+#            -DSOURCE_FILE="${DBGC_BINARY_DIR}/gb_manager.gb"
+#            -DOUTPUT_FILE="${DBGC_BINARY_DIR}/gb_manager.gb.h"
+#            -DVARIABLE_NAME="gb_manager_rom"
+#            -P ${CMAKE_SOURCE_DIR}/gb2header.cmake
+#        DEPENDS ${DBGC_BINARY_DIR}/gb_manager.gb
+#        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+#        COMMENT "Converting GB ROM to header file")
 
 set(ENV{PICO_BOARD_HEADER_DIRS} ${CMAKE_SOURCE_DIR}/sw/gb_manager/inc/board)
 set(PICO_BOARD deltabeard_dbgc)
@@ -78,29 +78,29 @@ function(pico_add_verbose_dis_output TARGET)
             )
 endfunction()
 
-add_executable(manager sw/gb_manager/src/rp2040.c)
-add_dependencies(manager gb_manager)
-target_include_directories(manager PRIVATE sw/gb_manager/inc)
-pico_generate_pio_header(manager
-        ${CMAKE_CURRENT_LIST_DIR}/sw/gb_manager/src/comms.pio)
-target_link_libraries(manager
-        pico_stdlib pico_bootrom pico_multicore
-        pico_bootsel_via_double_reset
-        hardware_clocks hardware_pll hardware_vreg hardware_pio
-        hardware_dma hardware_spi)
-target_compile_definitions(manager PRIVATE
-        PARAM_ASSERTIONS_DISABLE_ALL=1
-        PICO_ENTER_USB_BOOT_ON_EXIT=1
-        PICO_PANIC_FUNCTION=dbgc_panic)
-#pico_set_binary_type(manager copy_to_ram)
-pico_enable_stdio_usb(manager 0)
-pico_enable_stdio_uart(manager 0)
-pico_add_verbose_dis_output(manager)
-pico_add_bin_output(manager)
-pico_add_uf2_output(manager)
+#add_executable(manager sw/gb_manager/src/rp2040.c)
+#add_dependencies(manager gb_manager)
+#target_include_directories(manager PRIVATE sw/gb_manager/inc)
+#pico_generate_pio_header(manager
+#        ${CMAKE_CURRENT_LIST_DIR}/sw/gb_manager/src/comms.pio)
+#target_link_libraries(manager
+#        pico_stdlib pico_bootrom pico_multicore
+#        pico_bootsel_via_double_reset
+#        hardware_clocks hardware_pll hardware_vreg hardware_pio
+#        hardware_dma hardware_spi)
+#target_compile_definitions(manager PRIVATE
+#        PARAM_ASSERTIONS_DISABLE_ALL=1
+#        PICO_ENTER_USB_BOOT_ON_EXIT=1
+#        PICO_PANIC_FUNCTION=dbgc_panic)
+##pico_set_binary_type(manager copy_to_ram)
+#pico_enable_stdio_usb(manager 0)
+#pico_enable_stdio_uart(manager 0)
+#pico_add_verbose_dis_output(manager)
+#pico_add_bin_output(manager)
+#pico_add_uf2_output(manager)
 
 add_executable(verify sw/gb_manager/src/verify.c)
-add_dependencies(verify gb_manager)
+#add_dependencies(verify gb_manager)
 target_include_directories(verify PRIVATE sw/gb_manager/inc)
 #pico_generate_pio_header(verify
 #        ${CMAKE_CURRENT_LIST_DIR}/sw/gb_manager/src/comms.pio)
@@ -119,7 +119,7 @@ target_compile_definitions(verify PRIVATE
 target_link_libraries(verify
         pico_stdlib pico_stdio pico_bootrom pico_multicore
         hardware_clocks hardware_pio hardware_vreg hardware_pio
-        hardware_sync hardware_pll hardware_spi
+        hardware_sync hardware_pll hardware_spi hardware_irq
         pico_binary_info)
 pico_set_binary_type(verify no_flash)
 pico_enable_stdio_usb(verify 1)
