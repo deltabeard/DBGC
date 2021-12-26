@@ -43,7 +43,7 @@ get_address_gb_bus:
 	wait 0 irq IRQ_CONTROL_MULTIPLEXOR
 .wrap_target
 	; Make sure that the multplexor is set to the HIGH address byte.
-	set pins, SIDE_SET_MULTIPLEXOR_HIGHADDR				[2]
+	set pins, SIDE_SET_MULTIPLEXOR_HIGHADDR				[5]
 	; Check A15 or nCS. If HIGH, address isn't ready so loop.
 	jmp pin get_address_gb_bus
 	; Take control of multiplexor.
@@ -55,15 +55,15 @@ get_address_gb_bus:
 	in pins, 8
 	; Read LOW byte of address into ISR.
 	; Side: set multiplexor to LOW byte of address.
-	set pins, SIDE_SET_MULTIPLEXOR_LOWADDR				[2]
+	set pins, SIDE_SET_MULTIPLEXOR_LOWADDR				[5]
 	in pins, 8
-
-	; Allow other state machines to check for addresses.
-	irq clear IRQ_CONTROL_MULTIPLEXOR
 
 	; Wait until new clock cycle.
 	wait 0 GPIO PHI
 	wait 1 GPIO PHI
+
+	; Allow other state machines to manupulate the multiplexer.
+        irq clear IRQ_CONTROL_MULTIPLEXOR
 .wrap
 
 ; End .program get_address_gb_bus
@@ -76,9 +76,9 @@ write_data_gb_bus:
 	pull ifempty block
 	; Wait for any other state machine to finish controlling the
 	; multiplexor. FIXME: We should never have to wait here.
-	wait 0 irq IRQ_CONTROL_MULTIPLEXOR
+	;wait 0 irq IRQ_CONTROL_MULTIPLEXOR
 	; Take control of the multiplexor.
-	irq set IRQ_CONTROL_MULTIPLEXOR
+	;irq set IRQ_CONTROL_MULTIPLEXOR			[1]
 
 	; Set the multiplexor to output to the data bus.
 	set pins, SIDE_SET_MULTIPLEXOR_RP2040OUT
@@ -101,7 +101,7 @@ write_data_gb_bus:
 	; Set multiplexor pin directions to input (the default state).
 	out pindirs, 8
 	; Allow other state machines to take control of the multiplexor.
-	irq clear IRQ_CONTROL_MULTIPLEXOR
+	;irq clear IRQ_CONTROL_MULTIPLEXOR
 .wrap
 ; End .program write_data_gb_bus
 
@@ -115,68 +115,80 @@ read_data_gb_bus:
 
 	; Wait for any other state machine to finish controlling the
 	; multiplexor. FIXME: We should never have to wait here.
-	wait 0 irq IRQ_CONTROL_MULTIPLEXOR
+	;wait 0 irq IRQ_CONTROL_MULTIPLEXOR
 	; Take control of the multiplexor.
-	irq set IRQ_CONTROL_MULTIPLEXOR
+	;irq set IRQ_CONTROL_MULTIPLEXOR				[1]
 
 	; Set the multiplexor to read from the data bus.
-	set pins, SIDE_SET_MULTIPLEXOR_RP2040IN				[2]
+	set pins, SIDE_SET_MULTIPLEXOR_RP2040IN				[5]
 	; Read in data.
 	in pins, 8
 
-	; Wait for the Game Boy to end its write request. Not required, but
-	; stops the other state machines from checking pins.
+	; Wait for the Game Boy to end its write request.
 	wait 1 GPIO NWR
 
 	; Allow other state machines to take control of the multiplexor.
-	irq clear IRQ_CONTROL_MULTIPLEXOR
+	;irq clear IRQ_CONTROL_MULTIPLEXOR
 .wrap
 ; End .program write_data_gb_bus
 
 % c-sdk {
 
-#define SIDE_SET_INIT 0b1101
-
 /**
  * Initiliase Game Boy bus communication with PIO.
  */
-void gb_bus_program_basic_init(PIO pio, unsigned sm_a15, unsigned sm_wd)
+void gb_bus_program_basic_init(PIO pio, unsigned sm_a15, unsigned sm_ncs,
+	unsigned sm_wd, unsigned sm_rd)
 {
-	pio_sm_config sm_config_a15, sm_config_wd;
-	uint get_address_gb_bus_off, write_data_gb_bus_off;
+	pio_sm_config sm_config_a15, sm_config_ncs, sm_config_wd, sm_config_rd;
+	uint get_address_gb_bus_off, write_data_gb_bus_off,
+		read_data_gb_bus_off;
 
 	get_address_gb_bus_off = pio_add_program(pio, &get_address_gb_bus_program);
 	write_data_gb_bus_off = pio_add_program(pio, &write_data_gb_bus_program);
+	read_data_gb_bus_off = pio_add_program(pio, &read_data_gb_bus_program);
 	sm_config_a15 = get_address_gb_bus_program_get_default_config(get_address_gb_bus_off);
+	sm_config_ncs = get_address_gb_bus_program_get_default_config(get_address_gb_bus_off);
 	sm_config_wd = write_data_gb_bus_program_get_default_config(write_data_gb_bus_off);
+	sm_config_rd = read_data_gb_bus_program_get_default_config(read_data_gb_bus_off);
 
 	/* Configure IN pins. */
 	sm_config_set_in_pins(&sm_config_a15, PIO_M0);
-	sm_config_set_in_pins(&sm_config_wd,  PIO_M0);
+	sm_config_set_in_pins(&sm_config_ncs, PIO_M0);
+	sm_config_set_in_pins(&sm_config_rd,  PIO_M0);
 	/* Configure OUT pins. */
-	sm_config_set_out_pins(&sm_config_a15, PIO_M0, 8);
-	sm_config_set_out_pins(&sm_config_wd,  PIO_M0, 8);
+	sm_config_set_out_pins(&sm_config_wd, PIO_M0, 8);
 
 	/* Configure JMP pins. */
 	sm_config_set_jmp_pin(&sm_config_a15, PIO_M7);
+	sm_config_set_jmp_pin(&sm_config_ncs, PIO_NCS);
 
 	/* Set number of bits in RX FIFO. */
 	sm_config_set_in_shift(&sm_config_a15, true, true, 16);
+	sm_config_set_in_shift(&sm_config_ncs, true, true, 16);
+	sm_config_set_in_shift(&sm_config_rd,  true, true, 8);
 	/* Set number of bits in TX FIFO. */
-	sm_config_set_out_shift(&sm_config_a15, true, false, 8);
-	sm_config_set_out_shift(&sm_config_wd,  true, false, 8);
+	sm_config_set_out_shift(&sm_config_wd, true, false, 8);
 
 	/* Set clock speed of PIO state machines. */
-	sm_config_set_clkdiv_int_frac(&sm_config_a15, 2, 0);
-	sm_config_set_clkdiv_int_frac(&sm_config_wd,  2, 0);
+	sm_config_set_clkdiv_int_frac(&sm_config_a15, 1, 0);
+	sm_config_set_clkdiv_int_frac(&sm_config_ncs, 1, 0);
+	sm_config_set_clkdiv_int_frac(&sm_config_wd,  1, 0);
+	sm_config_set_clkdiv_int_frac(&sm_config_rd,  1, 0);
 
 	/* Set initial pin directions for all state machines. */
 	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_PHI, 4, false);
 	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_ADDR1_OE, 4, true);
 	pio_sm_set_consecutive_pindirs(pio, sm_a15, PIO_M0, 8, false);
+	pio_sm_set_consecutive_pindirs(pio, sm_ncs, PIO_PHI, 4, false);
+	pio_sm_set_consecutive_pindirs(pio, sm_ncs, PIO_ADDR1_OE, 4, true);
+	pio_sm_set_consecutive_pindirs(pio, sm_ncs, PIO_M0, 8, false);
 	pio_sm_set_consecutive_pindirs(pio, sm_wd, PIO_PHI, 4, false);
-	pio_sm_set_consecutive_pindirs(pio, sm_wd, PIO_ADDR1_OE, 4, true);
-	pio_sm_set_consecutive_pindirs(pio, sm_wd, PIO_M0, 8, false);
+        pio_sm_set_consecutive_pindirs(pio, sm_wd, PIO_ADDR1_OE, 4, true);
+        pio_sm_set_consecutive_pindirs(pio, sm_wd, PIO_M0, 8, false);
+        pio_sm_set_consecutive_pindirs(pio, sm_rd, PIO_PHI, 4, false);
+        pio_sm_set_consecutive_pindirs(pio, sm_rd, PIO_ADDR1_OE, 4, true);
+        pio_sm_set_consecutive_pindirs(pio, sm_rd, PIO_M0, 8, false);
 
 	/* Initialise GB Bus Pins */
 	for(uint_fast8_t pin = PIO_PHI; pin <= PIO_M7; pin++)
@@ -199,10 +211,14 @@ void gb_bus_program_basic_init(PIO pio, unsigned sm_a15, unsigned sm_wd)
 
 	/* Use SET to set the multiplexor state. */
 	sm_config_set_set_pins(&sm_config_a15, PIO_ADDR1_OE, 4);
+	sm_config_set_set_pins(&sm_config_ncs, PIO_ADDR1_OE, 4);
 	sm_config_set_set_pins(&sm_config_wd,  PIO_ADDR1_OE, 4);
+	sm_config_set_set_pins(&sm_config_rd,  PIO_ADDR1_OE, 4);
 
 	/* Initialise all state machines. */
 	pio_sm_init(pio, sm_a15, get_address_gb_bus_off, &sm_config_a15);
+	pio_sm_init(pio, sm_ncs, get_address_gb_bus_off, &sm_config_ncs);
 	pio_sm_init(pio, sm_wd, write_data_gb_bus_off, &sm_config_wd);
+	pio_sm_init(pio, sm_rd, read_data_gb_bus_off, &sm_config_rd);
 }
 %}

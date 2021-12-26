@@ -78,26 +78,34 @@ function(pico_add_verbose_dis_output TARGET)
             )
 endfunction()
 
-#add_executable(manager sw/gb_manager/src/rp2040.c)
+add_executable(manager sw/gb_manager/src/rp2040.c)
 #add_dependencies(manager gb_manager)
-#target_include_directories(manager PRIVATE sw/gb_manager/inc)
-#pico_generate_pio_header(manager
-#        ${CMAKE_CURRENT_LIST_DIR}/sw/gb_manager/src/comms.pio)
-#target_link_libraries(manager
-#        pico_stdlib pico_bootrom pico_multicore
-#        pico_bootsel_via_double_reset
-#        hardware_clocks hardware_pll hardware_vreg hardware_pio
-#        hardware_dma hardware_spi)
-#target_compile_definitions(manager PRIVATE
-#        PARAM_ASSERTIONS_DISABLE_ALL=1
-#        PICO_ENTER_USB_BOOT_ON_EXIT=1
-#        PICO_PANIC_FUNCTION=dbgc_panic)
-##pico_set_binary_type(manager copy_to_ram)
-#pico_enable_stdio_usb(manager 0)
-#pico_enable_stdio_uart(manager 0)
-#pico_add_verbose_dis_output(manager)
-#pico_add_bin_output(manager)
-#pico_add_uf2_output(manager)
+target_include_directories(manager PRIVATE sw/gb_manager/inc)
+pico_generate_pio_header(manager
+        ${CMAKE_CURRENT_LIST_DIR}/sw/gb_manager/src/comms_basic.pio)
+target_link_libraries(manager
+        pico_stdlib pico_stdio pico_bootrom pico_multicore
+        hardware_clocks hardware_pio hardware_vreg hardware_pio
+        hardware_sync hardware_pll hardware_spi hardware_irq
+        pico_binary_info)
+target_compile_definitions(manager PRIVATE
+        PARAM_ASSERTIONS_DISABLE_ALL=1
+        PICO_ENTER_USB_BOOT_ON_EXIT=1
+        PICO_STDIO_ENABLE_CRLF_SUPPORT=0
+        PICO_STDIO_DEFAULT_CRLF=0
+        PICO_PRINTF_SUPPORT_FLOAT=0
+        PICO_PRINTF_SUPPORT_EXPONENTIAL=0
+        PICO_PRINTF_SUPPORT_LONG_LONG=0
+        PICO_PRINTF_SUPPORT_PTRDIFF_T=0
+        PICO_STDIO_USB_RESET_BOOTSEL_ACTIVITY_LED=1
+        PICO_PANIC_FUNCTION=dbgc_panic)
+pico_set_binary_type(manager copy_to_ram)
+#pico_set_binary_type(manager no_flash)
+pico_enable_stdio_usb(manager 0)
+pico_enable_stdio_uart(manager 0)
+pico_add_verbose_dis_output(manager)
+pico_add_bin_output(manager)
+pico_add_uf2_output(manager)
 
 add_executable(verify sw/gb_manager/src/verify.c)
 #add_dependencies(verify gb_manager)

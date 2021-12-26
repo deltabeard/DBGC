@@ -97,8 +97,7 @@ typedef enum {
 static void pio_a15_irq(void)
 {
 	io_wo_8 *data_tx = (io_wo_8 *) &GB_BUS_PIO->txf[PIO_SM_DO] + 3;
-	io_ro_16 *addr_a15 = (io_ro_16 *)
-				     &GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
+	io_ro_16 *addr_a15 = (io_ro_16 *) &GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
 	uint16_t address;
 	uint8_t data;
 
