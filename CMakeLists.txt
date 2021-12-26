@@ -101,7 +101,7 @@ target_compile_definitions(manager PRIVATE
         PICO_PANIC_FUNCTION=dbgc_panic)
 pico_set_binary_type(manager copy_to_ram)
 #pico_set_binary_type(manager no_flash)
-pico_enable_stdio_usb(manager 0)
+pico_enable_stdio_usb(manager 1)
 pico_enable_stdio_uart(manager 0)
 pico_add_verbose_dis_output(manager)
 pico_add_bin_output(manager)

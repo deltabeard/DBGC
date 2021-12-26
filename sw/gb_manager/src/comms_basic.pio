@@ -39,13 +39,15 @@
 ; JMP pin must be set to either A15 (M7) or NCS.
 
 get_address_gb_bus:
+	; Initiliase multiplexer state.
+	; TODO: Move this to statemachine initialisation.
+	set pins, SIDE_SET_MULTIPLEXOR_HIGHADDR				[6]
+loop_mx:
 	; Do not set the multiplexor if it being used by another state machine.
 	wait 0 irq IRQ_CONTROL_MULTIPLEXOR
 .wrap_target
-	; Make sure that the multplexor is set to the HIGH address byte.
-	set pins, SIDE_SET_MULTIPLEXOR_HIGHADDR				[5]
 	; Check A15 or nCS. If HIGH, address isn't ready so loop.
-	jmp pin get_address_gb_bus
+	jmp pin loop_mx
 	; Take control of multiplexor.
 	irq set IRQ_CONTROL_MULTIPLEXOR
 
@@ -55,13 +57,15 @@ get_address_gb_bus:
 	in pins, 8
 	; Read LOW byte of address into ISR.
 	; Side: set multiplexor to LOW byte of address.
-	set pins, SIDE_SET_MULTIPLEXOR_LOWADDR				[5]
+	set pins, SIDE_SET_MULTIPLEXOR_LOWADDR				[6]
 	in pins, 8
 
 	; Wait until new clock cycle.
 	wait 0 GPIO PHI
 	wait 1 GPIO PHI
 
+	; Set default multiplexer state on new clock cycle.
+	set pins, SIDE_SET_MULTIPLEXOR_HIGHADDR				[5]
 	; Allow other state machines to manupulate the multiplexer.
         irq clear IRQ_CONTROL_MULTIPLEXOR
 .wrap
@@ -74,17 +78,12 @@ write_data_gb_bus:
 .wrap_target
 	; Wait until we have data to write to the Game Boy.
 	pull ifempty block
-	; Wait for any other state machine to finish controlling the
-	; multiplexor. FIXME: We should never have to wait here.
-	;wait 0 irq IRQ_CONTROL_MULTIPLEXOR
-	; Take control of the multiplexor.
-	;irq set IRQ_CONTROL_MULTIPLEXOR			[1]
 
 	; Set the multiplexor to output to the data bus.
 	set pins, SIDE_SET_MULTIPLEXOR_RP2040OUT
 
 	; Put date byte to the multiplexor. This must be done before multiplexor
-	; pin directions are changed, becuase that disrupts the OSR.
+	; pin directions are changed, because that disrupts the OSR.
 	out PINS, 8
 
 	; Set multiplexor pin directions to output.
@@ -100,8 +99,6 @@ write_data_gb_bus:
 
 	; Set multiplexor pin directions to input (the default state).
 	out pindirs, 8
-	; Allow other state machines to take control of the multiplexor.
-	;irq clear IRQ_CONTROL_MULTIPLEXOR
 .wrap
 ; End .program write_data_gb_bus
 
@@ -110,25 +107,21 @@ write_data_gb_bus:
 
 read_data_gb_bus:
 .wrap_target
+	pull ifempty block
+
+	; Set the multiplexor to read from the data bus.
+	set pins, SIDE_SET_MULTIPLEXOR_RP2040IN				[4]
+
+	out null, 8
+
 	; Wait for data to become ready.
 	wait 0 GPIO NWR
 
-	; Wait for any other state machine to finish controlling the
-	; multiplexor. FIXME: We should never have to wait here.
-	;wait 0 irq IRQ_CONTROL_MULTIPLEXOR
-	; Take control of the multiplexor.
-	;irq set IRQ_CONTROL_MULTIPLEXOR				[1]
-
-	; Set the multiplexor to read from the data bus.
-	set pins, SIDE_SET_MULTIPLEXOR_RP2040IN				[5]
 	; Read in data.
 	in pins, 8
 
 	; Wait for the Game Boy to end its write request.
 	wait 1 GPIO NWR
-
-	; Allow other state machines to take control of the multiplexor.
-	;irq clear IRQ_CONTROL_MULTIPLEXOR
 .wrap
 ; End .program write_data_gb_bus
 
@@ -169,6 +162,7 @@ void gb_bus_program_basic_init(PIO pio, unsigned sm_a15, unsigned sm_ncs,
 	sm_config_set_in_shift(&sm_config_rd,  true, true, 8);
 	/* Set number of bits in TX FIFO. */
 	sm_config_set_out_shift(&sm_config_wd, true, false, 8);
+	sm_config_set_out_shift(&sm_config_rd, true, false, 8);
 
 	/* Set clock speed of PIO state machines. */
 	sm_config_set_clkdiv_int_frac(&sm_config_a15, 1, 0);

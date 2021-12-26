@@ -21,15 +21,17 @@
 #include <hardware/pio.h>
 #include <hardware/irq.h>
 #include <string.h>
+#include <stdio.h>
 
 #include "comms_basic.pio.h"
 #include "generic.h"
 #include "cart.h"
 
 __attribute__((section ("gb_rom_section")))
-//#include "libbet.gb.h"
+#include "libbet.gb.h"
 //#include "bluestar.gbc.h"
-#include "rom_512kb.gb.h"
+//#include "rom_512kb.gb.h"
+//#include "ram_64kb.gb.h"
 
 static uint8_t ram[32768];
 
@@ -70,8 +72,12 @@ _Noreturn static void play_mbc1_rom(const uint8_t *const rom,
 
 	while(1)
 	{
-		io_wo_8 *tx_sm_do = (io_wo_8 *) &GB_BUS_PIO->txf[PIO_SM_DO] + 3;
-		io_wo_8 *tx_sm_di = (io_wo_8 *) &GB_BUS_PIO->txf[PIO_SM_DI] + 3;
+		io_wo_8 *tx_sm_do = (io_wo_8 *)
+			&GB_BUS_PIO->txf[PIO_SM_DO] + 3;
+		io_wo_8 *req_cart_write = (io_wo_8 *)
+			&GB_BUS_PIO->txf[PIO_SM_DI] + 3;
+		io_ro_8 *tx_sm_di = (io_ro_8 *)
+			&GB_BUS_PIO->rxf[PIO_SM_DI] + 3;
 		io_ro_16 *rx_sm_a15 = (io_ro_16 *)
 			&GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
 		io_ro_16 *rx_sm_ncs = (io_ro_16 *)
@@ -107,6 +113,7 @@ _Noreturn static void play_mbc1_rom(const uint8_t *const rom,
 #if 1
 		if(UNLIKELY(gpio_get(PIO_NRD)))
 		{
+			*req_cart_write = 0xFF;
 			/* TODO: Could use IRQ to handle writes to cart. */
 			while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_DI))
 				tight_loop_contents();
@@ -243,8 +250,12 @@ _Noreturn static void play_mbc3_rom(const uint8_t *const rom,
 
 	while(1)
 	{
-		io_wo_8 *tx_sm_do = (io_wo_8 *) &GB_BUS_PIO->txf[PIO_SM_DO] + 3;
-		io_wo_8 *tx_sm_di = (io_wo_8 *) &GB_BUS_PIO->txf[PIO_SM_DI] + 3;
+		io_wo_8 *tx_sm_do = (io_wo_8 *)
+			&GB_BUS_PIO->txf[PIO_SM_DO] + 3;
+		io_wo_8 *req_cart_write = (io_wo_8 *)
+			&GB_BUS_PIO->txf[PIO_SM_DI] + 3;
+		io_ro_8 *tx_sm_di = (io_ro_8 *)
+			&GB_BUS_PIO->rxf[PIO_SM_DI] + 3;
 		io_ro_16 *rx_sm_a15 = (io_ro_16 *)
 			&GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
 		io_ro_16 *rx_sm_ncs = (io_ro_16 *)
@@ -280,7 +291,8 @@ _Noreturn static void play_mbc3_rom(const uint8_t *const rom,
 #if 1
 		if(UNLIKELY(gpio_get(PIO_NRD)))
 		{
-			/* Could use IRQ to handle writes to cart. */
+			*req_cart_write = 0xFF;
+			/* TODO: Could use IRQ to handle writes to cart. */
 			while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_DI))
 				tight_loop_contents();
 
@@ -491,15 +503,19 @@ _Noreturn static void check_and_play_rom(const uint8_t *rom)
 
 	case 1:
 		pio_set_sm_mask_enabled(GB_BUS_PIO,
-			1 << PIO_SM_A15 | 1 << PIO_SM_NCS | 1 << PIO_SM_DO |
-				1 << PIO_SM_DI, true);
+			1 << PIO_SM_A15 |
+			(0) << PIO_SM_NCS |
+			1 << PIO_SM_DO |
+			1 << PIO_SM_DI, true);
 		play_mbc1_rom(rom, ram, num_rom_banks_mask, num_ram_banks);
 		break;
 
 	case 3:
 		pio_set_sm_mask_enabled(GB_BUS_PIO,
-			1 << PIO_SM_A15 | 1 << PIO_SM_NCS | 1 << PIO_SM_DO |
-				1 << PIO_SM_DI, true);
+			1 << PIO_SM_A15 |
+			(num_ram_banks != 0) << PIO_SM_NCS |
+			1 << PIO_SM_DO |
+			1 << PIO_SM_DI, true);
 		play_mbc3_rom(rom, ram, num_rom_banks_mask, num_ram_banks);
 		break;
 
@@ -515,9 +531,10 @@ _Noreturn void core1_play_rom(void)
 {
 	gb_bus_program_basic_init(GB_BUS_PIO, PIO_SM_A15, PIO_SM_NCS,
 		PIO_SM_DO, PIO_SM_DI);
-	//check_and_play_rom(libbet_gb);
+	check_and_play_rom(libbet_gb);
 	//check_and_play_rom(bluestar_gbc);
-	check_and_play_rom(rom_512kb_gb);
+	//check_and_play_rom(rom_512kb_gb);
+	//check_and_play_rom(ram_64kb_gb);
 }
 
 static void rst_callback(uint gpio, uint32_t events)
@@ -594,12 +611,28 @@ static inline void init_peripherals(void)
 	gpio_set_function(SPI_SCK, GPIO_FUNC_SPI);
 }
 
+_Noreturn void usb_status_reporter(void)
+{
+	io_ro_8 *tx_sm_di = (io_ro_8 *) &GB_BUS_PIO->rxf[PIO_SM_DI] + 3;
+
+	while(1)
+	{
+		uint8_t data;
+
+		while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_DI))
+			tight_loop_contents();
+
+		data = *tx_sm_di;
+		printf("0x%02x\n", data);
+	}
+}
+
 int main(void)
 {
 	{
 		/* The value for VCO set here is meant for least power
 		 * consumption. */
-		const unsigned vco = 532000000; /* 266MHz/133MHz */
+		const unsigned vco = 572000000; /* 286MHz/143MHz */
 		const unsigned div1 = 2, div2 = 1;
 
 		vreg_set_voltage(VREG_VOLTAGE_1_20);
@@ -611,9 +644,17 @@ int main(void)
 	init_peripherals();
 	begin_playing();
 
+	//stdio_usb_init();
+
 	/* Sleep forever. */
 	while(1)
+	{
+#if 0
+		//usb_status_reporter();
+#else
 		__wfi();
+#endif
+	}
 
 	UNREACHABLE();
 }
