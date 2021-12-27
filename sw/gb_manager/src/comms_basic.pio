@@ -80,6 +80,8 @@ write_data_gb_bus:
 	pull ifempty block
 
 	; Set the multiplexor to output to the data bus.
+	; A delay isn't required, because we hold this data on the data pins
+	; until the end of the clock cycle.
 	set pins, SIDE_SET_MULTIPLEXOR_RP2040OUT
 
 	; Put date byte to the multiplexor. This must be done before multiplexor
@@ -107,11 +109,16 @@ write_data_gb_bus:
 
 read_data_gb_bus:
 .wrap_target
+	; Wait for CPU to request data.
+	; TODO: Could we not use interrupts here?
 	pull ifempty block
 
 	; Set the multiplexor to read from the data bus.
+	; Do this now so that by the time NWR is ready, the multiplexer has
+	; finished switching.
 	set pins, SIDE_SET_MULTIPLEXOR_RP2040IN				[4]
 
+	; Discord OSR.
 	out null, 8
 
 	; Wait for data to become ready.
@@ -121,7 +128,9 @@ read_data_gb_bus:
 	in pins, 8
 
 	; Wait for the Game Boy to end its write request.
-	wait 1 GPIO NWR
+	; This isn't required, as the CPU should only be requesting one byte of
+	; data on each Game Boy clock cycle.
+	;wait 1 GPIO NWR
 .wrap
 ; End .program write_data_gb_bus
 

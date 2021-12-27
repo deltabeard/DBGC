@@ -115,14 +115,71 @@ static void pio_a15_irq(void)
 
 void func_framnuke(const char *cmd)
 {
-	(void) cmd;
-	puts("Not implemented");
+	uint8_t data;
+
+	cmd += strlen("FRAM NUKE ");
+	data = strtol(cmd, NULL, 10);
+#if 1
+	{
+		const uint8_t send[] = {
+			0b00000110
+		};
+		gpio_put(SPI_CSn, 0);
+		busy_wait_us(1);
+		spi_write_blocking(spi0, send, sizeof(send));
+		busy_wait_us(1);
+		gpio_put(SPI_CSn, 1);
+	}
+#endif
+
+	{
+		const uint8_t send[] = {
+			0b00000010, /* Write */
+			0x00, 0x00, /* Address */
+		};
+		unsigned rem = 4 * 0x2000;
+
+		gpio_put(SPI_CSn, 0);
+		busy_wait_us(1);
+		spi_write_blocking(spi0, send, sizeof(send));
+		while(rem > 0)
+		{
+			spi_write_blocking(spi0, &data, 1);
+			rem -= sizeof(data);
+		}
+
+		busy_wait_us(1);
+		gpio_put(SPI_CSn, 1);
+	}
+
+	puts("Nuked");
 }
 
 void func_framdump(const char *cmd)
 {
+	const uint8_t send[4] = {
+		0b00001011, /* FSTRD */
+		0x00, 0x00, /* Address */
+		0x00 /* Dummy */
+	};
+	uint8_t recv[8];
+	unsigned rem = 4 * 0x2000;
+
 	(void) cmd;
-	puts("Not implemented");
+
+	gpio_put(SPI_CSn, 0);
+	busy_wait_us(1);
+	spi_write_blocking(spi0, send, sizeof(send));
+	while(rem > 0)
+	{
+		spi_read_blocking(spi0, 0x00, recv, sizeof(recv));
+		printf("%02x %02x %02x %02x %02x %02x %02x %02x\n",
+			recv[0], recv[1], recv[2], recv[3],
+			recv[4], recv[5], recv[6], recv[7]);
+		rem -= sizeof(recv);
+	}
+	busy_wait_us(1);
+	gpio_put(SPI_CSn, 1);
 }
 
 void func_btn(const char *cmd)
@@ -142,7 +199,8 @@ void func_led(const char *cmd)
 
 _Noreturn void core1_play_rom(void)
 {
-	gb_bus_program_basic_init(GB_BUS_PIO, PIO_SM_A15, PIO_SM_DO);
+	gb_bus_program_basic_init(GB_BUS_PIO, PIO_SM_A15, PIO_SM_NCS,
+		PIO_SM_DO, PIO_SM_DI);
 
 	pio_set_irq0_source_enabled(GB_BUS_PIO, pis_sm0_rx_fifo_not_empty, true);
 	irq_set_exclusive_handler(PIO0_IRQ_0, pio_a15_irq);
@@ -556,15 +614,15 @@ int main(void)
 		set_sys_clock_pll(vco, div1, div2);
 		sleep_ms(1);
 		/* Unused clocks are stopped. */
-		clock_stop(clk_adc);
-		clock_stop(clk_rtc);
+		//clock_stop(clk_adc);
+		//clock_stop(clk_rtc);
 	}
 
 	init_peripherals();
 
 	/* Grant high bus priority to the second core. */
-	bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_PROC1_BITS;
-	multicore_launch_core1(core1_play_rom);
+	//bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_PROC1_BITS;
+	//multicore_launch_core1(core1_play_rom);
 
 	/* If baudrate is set to PICO_STDIO_USB_RESET_MAGIC_BAUD_RATE, then the
 	 * RP2040 will reset to BOOTSEL mode. */

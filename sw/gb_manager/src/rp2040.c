@@ -28,8 +28,8 @@
 #include "cart.h"
 
 __attribute__((section ("gb_rom_section")))
-#include "libbet.gb.h"
-//#include "bluestar.gbc.h"
+//#include "libbet.gb.h"
+#include "bluestar.gbc.h"
 //#include "rom_512kb.gb.h"
 //#include "ram_64kb.gb.h"
 
@@ -70,18 +70,14 @@ _Noreturn static void play_mbc1_rom(const uint8_t *const rom,
 	/* Cartridge ROM/RAM mode select. */
 	uint8_t cart_mode_select = 0;
 
+	io_wo_8  *tx_sm_do  = (io_wo_8 *)&GB_BUS_PIO->txf[PIO_SM_DO] + 3;
+	io_wo_8  *req_cart_wr = (io_wo_8 *)&GB_BUS_PIO->txf[PIO_SM_DI] + 3;
+	io_ro_8  *tx_sm_di  = (io_ro_8 *)&GB_BUS_PIO->rxf[PIO_SM_DI] + 3;
+	io_ro_16 *rx_sm_a15 = (io_ro_16 *)&GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
+	io_ro_16 *rx_sm_ncs = (io_ro_16 *)&GB_BUS_PIO->rxf[PIO_SM_NCS] + 1;
+
 	while(1)
 	{
-		io_wo_8 *tx_sm_do = (io_wo_8 *)
-			&GB_BUS_PIO->txf[PIO_SM_DO] + 3;
-		io_wo_8 *req_cart_write = (io_wo_8 *)
-			&GB_BUS_PIO->txf[PIO_SM_DI] + 3;
-		io_ro_8 *tx_sm_di = (io_ro_8 *)
-			&GB_BUS_PIO->rxf[PIO_SM_DI] + 3;
-		io_ro_16 *rx_sm_a15 = (io_ro_16 *)
-			&GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
-		io_ro_16 *rx_sm_ncs = (io_ro_16 *)
-			&GB_BUS_PIO->rxf[PIO_SM_NCS] + 1;
 		uint16_t address;
 		uint8_t data;
 
@@ -102,10 +98,6 @@ _Noreturn static void play_mbc1_rom(const uint8_t *const rom,
 				if(address < 0xA000 || address > 0xBFFF)
 					continue;
 
-				//if(gpio_get(PIO_NRD))
-				//	__atomic_store_n(&ram_write, 1,
-				//	__ATOMIC_SEQ_CST);
-
 				break;
 			}
 		}
@@ -113,7 +105,8 @@ _Noreturn static void play_mbc1_rom(const uint8_t *const rom,
 #if 1
 		if(UNLIKELY(gpio_get(PIO_NRD)))
 		{
-			*req_cart_write = 0xFF;
+			*req_cart_wr = 0xFF;
+
 			/* TODO: Could use IRQ to handle writes to cart. */
 			while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_DI))
 				tight_loop_contents();
@@ -232,6 +225,12 @@ _Noreturn static void play_mbc3_rom(const uint8_t *const rom,
 	/* Cartridge ROM/RAM mode select. */
 	uint8_t cart_mode_select = 0;
 
+	io_wo_8  *tx_sm_do  = (io_wo_8 *)&GB_BUS_PIO->txf[PIO_SM_DO] + 3;
+	io_wo_8  *req_cart_wr = (io_wo_8 *)&GB_BUS_PIO->txf[PIO_SM_DI] + 3;
+	io_ro_8  *tx_sm_di  = (io_ro_8 *)&GB_BUS_PIO->rxf[PIO_SM_DI] + 3;
+	io_ro_16 *rx_sm_a15 = (io_ro_16 *)&GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
+	io_ro_16 *rx_sm_ncs = (io_ro_16 *)&GB_BUS_PIO->rxf[PIO_SM_NCS] + 1;
+
 	union cart_rtc
 	{
 		struct __attribute__ ((__packed__))
@@ -245,21 +244,8 @@ _Noreturn static void play_mbc3_rom(const uint8_t *const rom,
 		uint8_t bytes[5];
 	} rtc;
 
-	/* MBC3 allows for the use of external RAM. */
-	//pio_sm_set_enabled(pio0, PIO_SM_NCS, true);
-
 	while(1)
 	{
-		io_wo_8 *tx_sm_do = (io_wo_8 *)
-			&GB_BUS_PIO->txf[PIO_SM_DO] + 3;
-		io_wo_8 *req_cart_write = (io_wo_8 *)
-			&GB_BUS_PIO->txf[PIO_SM_DI] + 3;
-		io_ro_8 *tx_sm_di = (io_ro_8 *)
-			&GB_BUS_PIO->rxf[PIO_SM_DI] + 3;
-		io_ro_16 *rx_sm_a15 = (io_ro_16 *)
-			&GB_BUS_PIO->rxf[PIO_SM_A15] + 1;
-		io_ro_16 *rx_sm_ncs = (io_ro_16 *)
-			&GB_BUS_PIO->rxf[PIO_SM_NCS] + 1;
 		uint16_t address;
 		uint8_t data;
 
@@ -291,7 +277,7 @@ _Noreturn static void play_mbc3_rom(const uint8_t *const rom,
 #if 1
 		if(UNLIKELY(gpio_get(PIO_NRD)))
 		{
-			*req_cart_write = 0xFF;
+			*req_cart_wr = 0xFF;
 			/* TODO: Could use IRQ to handle writes to cart. */
 			while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_DI))
 				tight_loop_contents();
@@ -340,22 +326,23 @@ _Noreturn static void play_mbc3_rom(const uint8_t *const rom,
 
 			case 0xA:
 			case 0xB:
-				if(num_ram_banks && enable_cart_ram)
+				if(!(num_ram_banks && enable_cart_ram))
+					break;
+
+				if(cart_ram_bank >= 0x08)
 				{
-					if(cart_ram_bank >= 0x08)
-						rtc.bytes[cart_ram_bank -
-							0x08] = data;
-					else if(cart_mode_select &&
-						cart_ram_bank < num_ram_banks)
-					{
-						ram[address - CART_RAM_ADDR + (cart_ram_bank * CRAM_BANK_SIZE)] = data;
-					}
-					else
-					{
-						ram[address -
-							CART_RAM_ADDR] = data;
-					}
+					rtc.bytes[cart_ram_bank - 0x08] = data;
 				}
+				else if(cart_mode_select &&
+					cart_ram_bank < num_ram_banks)
+				{
+					ram[address - CART_RAM_ADDR + (cart_ram_bank * CRAM_BANK_SIZE)] = data;
+				}
+				else
+				{
+					ram[address - CART_RAM_ADDR] = data;
+				}
+
 
 				break;
 
@@ -419,11 +406,22 @@ _Noreturn static void play_mbc3_rom(const uint8_t *const rom,
 	}
 }
 
+static uint8_t get_ram_banks(const uint8_t *rom)
+{
+	const uint16_t ram_size_location = 0x0149;
+	const uint8_t num_ram_banks_lut[] = { 0, 0, 1, 4, 16, 8 };
+	uint8_t ram_sz_value;
+	uint8_t num_ram_banks;
+
+	ram_sz_value = rom[ram_size_location];
+	num_ram_banks = num_ram_banks_lut[ram_sz_value];
+	return num_ram_banks;
+}
+
 _Noreturn static void check_and_play_rom(const uint8_t *rom)
 {
 	const uint16_t mbc_location = 0x0147;
 	const uint16_t bank_count_location = 0x0148;
-	const uint16_t ram_size_location = 0x0149;
 	const uint8_t cart_mbc_lut[0xFF] = {
 		/* ROM Only */
 		[0x00] = 0,
@@ -454,7 +452,6 @@ _Noreturn static void check_and_play_rom(const uint8_t *rom)
 	const uint16_t num_rom_banks_lut[] = {
 		2, 4, 8, 16, 32, 64, 128, 256, 512
 	};
-	const uint8_t num_ram_banks_lut[] = { 0, 0, 1, 4, 16, 8 };
 	/* Cartridge information:
 	 * Memory Bank Controller (MBC) type. */
 	uint8_t mbc;
@@ -467,20 +464,15 @@ _Noreturn static void check_and_play_rom(const uint8_t *rom)
 	/* Check if cartridge type is supported, and set MBC type. */
 	{
 		const uint8_t mbc_value = rom[mbc_location];
-		const uint8_t ram_sz_value = rom[ram_size_location];
 
 		if(mbc_value > sizeof(cart_mbc_lut) - 1 ||
-			(mbc = cart_mbc_lut[mbc_value]) == 255u)
+				(mbc = cart_mbc_lut[mbc_value]) == 255u)
 			goto err;
 
-		num_ram_banks = num_ram_banks_lut[ram_sz_value];
+		num_ram_banks = get_ram_banks(rom);
 		/* Limit RAM size to 32KiB. */
 		if(num_ram_banks > 4)
 			goto err;
-
-		/* If cart RAM is required, enable SM_NCS state machine. */
-		if(num_ram_banks != 0)
-			pio_sm_set_enabled(pio0, PIO_SM_NCS, true);
 
 		num_rom_banks_mask = num_rom_banks_lut[rom[bank_count_location]] - 1;
 	}
@@ -504,7 +496,7 @@ _Noreturn static void check_and_play_rom(const uint8_t *rom)
 	case 1:
 		pio_set_sm_mask_enabled(GB_BUS_PIO,
 			1 << PIO_SM_A15 |
-			(0) << PIO_SM_NCS |
+			(num_ram_banks != 0) << PIO_SM_NCS |
 			1 << PIO_SM_DO |
 			1 << PIO_SM_DI, true);
 		play_mbc1_rom(rom, ram, num_rom_banks_mask, num_ram_banks);
@@ -531,10 +523,7 @@ _Noreturn void core1_play_rom(void)
 {
 	gb_bus_program_basic_init(GB_BUS_PIO, PIO_SM_A15, PIO_SM_NCS,
 		PIO_SM_DO, PIO_SM_DI);
-	check_and_play_rom(libbet_gb);
-	//check_and_play_rom(bluestar_gbc);
-	//check_and_play_rom(rom_512kb_gb);
-	//check_and_play_rom(ram_64kb_gb);
+	check_and_play_rom(bluestar_gbc);
 }
 
 static void rst_callback(uint gpio, uint32_t events)
@@ -554,6 +543,42 @@ static inline void begin_playing(void)
 	/* Grant high bus priority to the second core. */
 	bus_ctrl_hw->priority = BUSCTRL_BUS_PRIORITY_PROC1_BITS;
 	multicore_launch_core1(core1_play_rom);
+}
+
+static bool sync_fram(repeating_timer_t *rt)
+{
+	const unsigned *ram_sz = rt->user_data;
+
+	/* If RAM size is 0, then do not write any save data. */
+	if(*ram_sz == 0)
+		return false;
+
+	{
+		const uint8_t send[] = {
+			0b00000110 /* Write enable */
+		};
+		gpio_put(SPI_CSn, 0);
+		busy_wait_us(1);
+		spi_write_blocking(spi0, send, sizeof(send));
+		busy_wait_us(1);
+		gpio_put(SPI_CSn, 1);
+	}
+
+	/* Read save data. */
+	{
+		const uint8_t cmd[] = {
+			0b00000010, /* Write */
+			0x00, 0x00, /* Address */
+		};
+		gpio_put(SPI_CSn, 0);
+		busy_wait_us(1);
+		spi_write_blocking(spi0, cmd, sizeof(cmd));
+		spi_write_blocking(spi0, ram, *ram_sz);
+		busy_wait_us(1);
+		gpio_put(SPI_CSn, 1);
+	}
+
+	return true;
 }
 
 static inline void init_peripherals(void)
@@ -611,22 +636,6 @@ static inline void init_peripherals(void)
 	gpio_set_function(SPI_SCK, GPIO_FUNC_SPI);
 }
 
-_Noreturn void usb_status_reporter(void)
-{
-	io_ro_8 *tx_sm_di = (io_ro_8 *) &GB_BUS_PIO->rxf[PIO_SM_DI] + 3;
-
-	while(1)
-	{
-		uint8_t data;
-
-		while(pio_sm_is_rx_fifo_empty(pio0, PIO_SM_DI))
-			tight_loop_contents();
-
-		data = *tx_sm_di;
-		printf("0x%02x\n", data);
-	}
-}
-
 int main(void)
 {
 	{
@@ -642,18 +651,43 @@ int main(void)
 	}
 
 	init_peripherals();
-	begin_playing();
 
-	//stdio_usb_init();
+	do {
+		uint8_t num_ram_banks;
+		static unsigned ram_sz;
+		static repeating_timer_t fram_timer;
+
+		num_ram_banks = get_ram_banks(bluestar_gbc);
+		ram_sz = (unsigned)num_ram_banks * CRAM_BANK_SIZE;
+
+		if(ram_sz == 0)
+			break;
+
+		/* Read save data. */
+		{
+			const uint8_t cmd[4] = {
+				0b00001011, /* FSTRD */
+				0x00, 0x00, /* Address */
+				0x00 /* Dummy */
+			};
+			gpio_put(SPI_CSn, 0);
+			busy_wait_us(1);
+			spi_write_blocking(spi0, cmd, sizeof(cmd));
+			spi_read_blocking(spi0, 0x00, ram, ram_sz);
+			busy_wait_us(1);
+			gpio_put(SPI_CSn, 1);
+		}
+
+		add_repeating_timer_us(4 * 1024, sync_fram,
+			&ram_sz, &fram_timer);
+	} while(0);
+
+	begin_playing();
 
 	/* Sleep forever. */
 	while(1)
 	{
-#if 0
-		//usb_status_reporter();
-#else
 		__wfi();
-#endif
 	}
 
 	UNREACHABLE();
