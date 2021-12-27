@@ -34,6 +34,9 @@ __attribute__((section ("gb_rom_section")))
 //#include "ram_64kb.gb.h"
 
 static uint8_t ram[32768];
+/* Number of writes to cartridge RAM (battery backed RAM) since last sync
+ * with FRAM. This should reduce FRAM writes and battery power a bit. */
+static int ram_write = 0;
 
 typedef enum {
 	GB_POWER_ON = 0,
@@ -146,19 +149,20 @@ _Noreturn static void play_mbc1_rom(const uint8_t *const rom,
 
 			case 0xA:
 			case 0xB:
-				if(num_ram_banks && enable_cart_ram)
+				if(!(num_ram_banks && enable_cart_ram))
+					break;
+
+				if(cart_mode_select &&
+					cart_ram_bank < num_ram_banks)
 				{
-					if(cart_mode_select &&
-						cart_ram_bank < num_ram_banks)
-					{
-						ram[address - CART_RAM_ADDR + (cart_ram_bank * CRAM_BANK_SIZE)] = data;
-					}
-					else if(num_ram_banks)
-					{
-						ram[address -
-							CART_RAM_ADDR] = data;
-					}
+					ram[address - CART_RAM_ADDR + (cart_ram_bank * CRAM_BANK_SIZE)] = data;
 				}
+				else if(num_ram_banks)
+				{
+					ram[address - CART_RAM_ADDR] = data;
+				}
+
+				__atomic_store_n(&ram_write, 1, __ATOMIC_SEQ_CST);
 
 				break;
 
@@ -266,10 +270,6 @@ _Noreturn static void play_mbc3_rom(const uint8_t *const rom,
 				if(address < 0xA000 || address > 0xBFFF)
 					continue;
 
-				//if(gpio_get(PIO_NRD))
-				//	__atomic_store_n(&ram_write, 1,
-				//	__ATOMIC_SEQ_CST);
-
 				break;
 			}
 		}
@@ -332,8 +332,10 @@ _Noreturn static void play_mbc3_rom(const uint8_t *const rom,
 				if(cart_ram_bank >= 0x08)
 				{
 					rtc.bytes[cart_ram_bank - 0x08] = data;
+					break;
 				}
-				else if(cart_mode_select &&
+
+				if(cart_mode_select &&
 					cart_ram_bank < num_ram_banks)
 				{
 					ram[address - CART_RAM_ADDR + (cart_ram_bank * CRAM_BANK_SIZE)] = data;
@@ -343,7 +345,7 @@ _Noreturn static void play_mbc3_rom(const uint8_t *const rom,
 					ram[address - CART_RAM_ADDR] = data;
 				}
 
-
+				__atomic_store_n(&ram_write, 1, __ATOMIC_SEQ_CST);
 				break;
 
 			default:
@@ -549,9 +551,20 @@ static bool sync_fram(repeating_timer_t *rt)
 {
 	const unsigned *ram_sz = rt->user_data;
 
+
 	/* If RAM size is 0, then do not write any save data. */
 	if(*ram_sz == 0)
 		return false;
+
+	/* Do not sync FRAM if no writes were made to the cart RAM. */
+	if(ram_write == 0)
+		return true;
+
+	/* Reset RAM write indicator. */
+	__atomic_store_n(&ram_write, 0, __ATOMIC_SEQ_CST);
+
+	/* Indicate that a save is taking place. */
+	gpio_put(GPIO_LED_GREEN, true);
 
 	{
 		const uint8_t send[] = {
@@ -577,6 +590,8 @@ static bool sync_fram(repeating_timer_t *rt)
 		busy_wait_us(1);
 		gpio_put(SPI_CSn, 1);
 	}
+
+	gpio_put(GPIO_LED_GREEN, false);
 
 	return true;
 }
@@ -678,7 +693,7 @@ int main(void)
 			gpio_put(SPI_CSn, 1);
 		}
 
-		add_repeating_timer_us(4 * 1024, sync_fram,
+		add_repeating_timer_us(256 * 1024, sync_fram,
 			&ram_sz, &fram_timer);
 	} while(0);
 
