@@ -656,10 +656,10 @@ int main(void)
 	{
 		/* The value for VCO set here is meant for least power
 		 * consumption. */
-		const unsigned vco = 572000000; /* 286MHz/143MHz */
+		const unsigned vco = 532000000; /* 266MHz/133MHz */
 		const unsigned div1 = 2, div2 = 1;
 
-		vreg_set_voltage(VREG_VOLTAGE_1_20);
+		vreg_set_voltage(VREG_VOLTAGE_1_15);
 		sleep_ms(2);
 		set_sys_clock_pll(vco, div1, div2);
 		sleep_ms(2);
